@@ -17,10 +17,8 @@ Open-source market-making bots for prediction markets, in TypeScript on [Bun](ht
 
 ```mermaid
 flowchart LR
-  S["Polymarket · Kalshi<br/>price feeds · XTracker<br/>status pages"] --> D["Distribution<br/>of the number"]
-  D --> G["Guards<br/>range · jumps · staleness"]
-  G --> L["Ladder<br/>either side of the median"]
-  L --> R["Rizon API<br/>one batch per re-quote"]
+  S["Polymarket, Kalshi<br/>or a live feed"] --> D["Distribution<br/>of the number"]
+  D --> Q["Quotes on Rizon<br/>around the median"]
 ```
 
 ## Horizon contracts
