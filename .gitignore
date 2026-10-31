@@ -1,0 +1,7 @@
+node_modules/
+*.log
+.DS_Store
+.env*
+# a bot's account keys: never commit them
+maker*.json
+*.key.json
