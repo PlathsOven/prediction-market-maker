@@ -23,6 +23,8 @@ flowchart LR
 
 ## Horizon contracts
 
+The full definition, pricing and limits are in [the horizon contracts reference](https://rizon.markets/horizon-contracts). In short:
+
 A **horizon contract** is a binary that always pays a fixed 2×: you risk your size to win your size. It's written on a number (a price, a seat count, a rate, a date, a count, an uptime). Instead of a price in cents, the book quotes a **strike**. Higher wins if the number ends above the strike, Lower if it ends below. Some markets are rolling: each fill expires a fixed time after itself (Bitcoin and gold over 15 seconds, a minute or 5 minutes; Elon Musk's post count over a day or a week; uptime over 1, 7 or 30 whole UTC days). Others are fixed, with one settlement date or event (House seats after the midterms, the Fed's rate at the end of 2027, the day Anthropic lists).
 
 Every contract trades at 50/50, so what moves is the strike, and the book's midpoint is the market's forecast of the number: "196 seats", "4.375%", "Nov 20". Event venues split the same question into a dozen buckets (Fed: 15 rates; Elon's posts: 30 ranges of 20). More than half of those prices sit under 10¢ or over 90¢ (98 of 173 on Oct 29), each in its own thin book. A horizon market is one continuous book on the number, so all the liquidity meets at the median.
