@@ -14,7 +14,6 @@ describe('distributions: atoms and uniform segments', () => {
     expect(d.cdf(194.5)).toBeCloseTo(0.3, 12);
     // the median: 20% of the way into the second bucket's 70%
     expect(d.median()).toBeCloseTo(194.5 + (5 * 0.2) / 0.7, 9);
-    expect(d.mean()).toBeCloseTo(0.3 * 192 + 0.7 * 197, 9);
     expect(d.support()).toEqual([189.5, 199.5]);
   });
 

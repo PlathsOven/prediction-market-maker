@@ -2,7 +2,7 @@
 // the event and its markets, each with structured strikes (floor_strike, cap_strike, strike_type), so nothing is
 // parsed from text. Prices are dollars per contract (0-1) for the Yes side. Docs: https://docs.kalshi.com
 import { getJson } from '../http.ts';
-import type { Range } from './polymarket.ts';
+import { type Range, num } from './polymarket.ts';
 
 export const KALSHI = 'https://api.elections.kalshi.com/trade-api/v2';
 
@@ -17,21 +17,14 @@ export interface KsMarket {
   last: number | null;
   /** active, or closed / settled / finalized */
   status: string;
-  volume: number;
 }
 
 export interface KsEvent {
   ticker: string;
-  title: string;
   /** Its markets are buckets (exactly one wins) rather than separate thresholds. */
   exclusive: boolean;
   markets: KsMarket[];
 }
-
-const num = (x: unknown): number | null => {
-  const n = typeof x === 'string' ? Number(x) : x;
-  return typeof n === 'number' && Number.isFinite(n) ? n : null;
-};
 
 /** strike_type with floor_strike / cap_strike, as a Range. */
 export function kalshiRange(type: string, floor: number | null, cap: number | null): Range | null {
@@ -56,7 +49,6 @@ export function parseKsEvent(json: unknown): KsEvent {
   if (!ev || !Array.isArray(ev.markets)) throw new Error('no such Kalshi event');
   return {
     ticker: String(ev.event_ticker ?? ''),
-    title: String(ev.title ?? ''),
     exclusive: ev.mutually_exclusive === true,
     markets: (ev.markets as Record<string, unknown>[]).map((m) => {
       const bid = num(m.yes_bid_dollars);
@@ -70,7 +62,6 @@ export function parseKsEvent(json: unknown): KsEvent {
         ask: ask !== null && ask < 1 ? ask : null,
         last: num(m.last_price_dollars),
         status: String(m.status ?? ''),
-        volume: num(m.volume_fp) ?? num(m.volume) ?? 0,
       };
     }),
   };

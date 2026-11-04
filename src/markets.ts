@@ -13,7 +13,7 @@ import { Dist } from './dist.ts';
 import { BTC_FEED, type FeedCalibration, GOLD_SIGMA, type SigmaCalibration, feedLadder, sigmaLadder } from './ladder.ts';
 import { type DateSource, type DayBuckets, DateModel } from './models/date.ts';
 import { ElonModel, HISTORY_DAYS } from './models/elon.ts';
-import { EventModel } from './models/event.ts';
+import { EventModel, type Prior } from './models/event.ts';
 import { FeedModel } from './models/feed.ts';
 import { type Built, DistModel, type Guards, type Model, type Sizing } from './models/model.ts';
 import { MaxYieldModel } from './models/ust10y.ts';
@@ -23,12 +23,12 @@ import { PostLog } from './sources/xtracker.ts';
 
 export type Spec =
   /** A price feed, quoted with BTC's ladder in strikes. */
-  | { model: 'feed'; calibration: FeedCalibration; quoteWhenNotLive: boolean }
+  | { model: 'feed'; calibration: FeedCalibration }
   /** A price feed, quoted with BTC's ladder in sigmas (gold's strikes are coarse next to its moves). */
-  | { model: 'sigmaFeed'; calibration: SigmaCalibration; quoteWhenNotLive: boolean; maxAgeMs?: number }
+  | { model: 'sigmaFeed'; calibration: SigmaCalibration; maxAgeMs?: number }
   /** A running count (Elon's posts): the count now plus the posts over the horizon, from the post history. */
   | { model: 'elon' }
-  | { model: 'event'; value: ValueType; support: [number, number]; sources: AnalogSpec[]; checks?: AnalogSpec[]; drop?: RegExp[]; conditional?: boolean }
+  | { model: 'event'; value: ValueType; support: [number, number]; sources: AnalogSpec[]; checks?: AnalogSpec[]; drop?: RegExp[]; conditional?: boolean; prior?: Prior }
   | { model: 'date'; zone: string; sources: DateSource[]; checks?: DayBuckets[] }
   | { model: 'maxYield'; slug: string; from: string; to: string; cap: number }
   | { model: 'uptime'; uptime: UptimeSpec }
@@ -41,6 +41,8 @@ export interface Entry {
   spec: Spec;
   /** The fair value's checks, in the market's units (src/models/model.ts); per market when its horizons differ. */
   guards?: Guards | ((m: Pick<Market, 'horizon'>) => Guards);
+  /** The best quotes' margin, over the default (src/ladder.ts LADDER). */
+  margin?: number;
   offline?: Listing | Listing[];
 }
 
@@ -62,11 +64,48 @@ function uptimeEntries(prefix: string, market: string, uptime: UptimeSpec, scale
   );
 }
 
+/** One standard deviation of an NFL game's total, or of its margin, against the line, in points. */
+const NFL_SIGMA = 13.5;
+/**
+ * A book one point wide leaves a taker with 3¢ per $1 to pay at that sigma (0.8 × half-spread ÷ sigma), against 4.5¢ for
+ * a sportsbook's -110: this margin keeps the best quotes on the half-points either side of the median.
+ */
+const NFL_MARGIN = 0.015;
+/** A normal distribution as CDF knots. */
+const normalKnots = (mean: number, sd: number): [number, number][] =>
+  (
+    [[-3, 0.00135], [-2, 0.02275], [-1.5, 0.06681], [-1, 0.15866], [-0.5, 0.30854], [0, 0.5], [0.5, 0.69146], [1, 0.84134], [1.5, 0.93319], [2, 0.97725], [3, 0.99865]] as const
+  ).map(([z, p]) => [mean + z * sd, p]);
+
+/**
+ * An NFL game's two books, off Kalshi's ladders (each a threshold every point or so, trading through the game). Kalshi
+ * lists a game's totals and spreads about a week out; until then, and only until kickoff, a prior quoted wider.
+ */
+function nflEntries(api: string, game: string, home: string, kickoff: string, prior: { total: number; margin: number; why: string }): Record<string, Entry> {
+  const until = ms(kickoff);
+  const book = (line: 'TOTAL' | 'SPREAD', mean: number, unit: string, support: [number, number], strikes: [number, number]): [string, Entry] => [
+    `${api}-${line}`,
+    {
+      margin: NFL_MARGIN,
+      guards: { scale: 7, sane: support },
+      spec: {
+        model: 'event',
+        value: { type: 'continuous' },
+        support,
+        sources: [{ venue: 'kalshi', event: `KXNFL${line}-${game}`, ...(line === 'SPREAD' && { home }) }],
+        prior: { knots: normalKnots(mean, NFL_SIGMA), why: prior.why, until },
+      },
+      offline: { id: `${api}-${line}`, kind: 'fixed', unit, strikeStep: 1, strikeOffset: 0.5, strikeMin: strikes[0], strikeMax: strikes[1], expiresAt: until + 8 * 3_600_000 },
+    },
+  ];
+  return Object.fromEntries([book('TOTAL', prior.total, 'points', [0, 120], [0, 150]), book('SPREAD', prior.margin, 'spread', [-70, 70], [-100, 100])]);
+}
+
 export const CATALOG: Readonly<Record<string, Entry>> = {
-  'BTC-USD': { spec: { model: 'feed', calibration: BTC_FEED, quoteWhenNotLive: false } },
+  'BTC-USD': { spec: { model: 'feed', calibration: BTC_FEED } },
   'PAXG-USD': {
-    // the exchange takes no gold orders without an index tick in the last 5 s: the book comes down a second before
-    spec: { model: 'sigmaFeed', calibration: GOLD_SIGMA, quoteWhenNotLive: false, maxAgeMs: 4_000 },
+    // the exchange takes no gold orders without an index tick in the last 5 s: the book is held from a second before
+    spec: { model: 'sigmaFeed', calibration: GOLD_SIGMA, maxAgeMs: 4_000 },
     offline: { id: 'GOLD-15s', underlying: 'PAXG-USD', kind: 'rolling', horizon: 15, unit: 'usd', strikeStep: 0.1, strikeOffset: 0 },
   },
   // Elon Musk's posts on X since 2026-01-01 (XTracker's count): the count now plus the posts over the next 1 or 7
@@ -79,6 +118,12 @@ export const CATALOG: Readonly<Record<string, Entry>> = {
       { id: 'ELON-7d', kind: 'rolling', horizon: 604_800, unit: 'count', strikeStep: 1, strikeOffset: 0.5 },
     ],
   },
+
+  // Thanksgiving's three games. The priors' margins are ESPN's matchup predictor on Nov 4 (the home team's chance of
+  // winning, at NFL_SIGMA); the totals are a typical game's
+  ...nflEntries('NFL-CHI-DET', '26NOV26CHIDET', 'DET', '2026-11-26T18:00:00Z', { total: 46, margin: -2, why: 'a typical total; ESPN gives the Lions 44%' }),
+  ...nflEntries('NFL-PHI-DAL', '26NOV26PHIDAL', 'DAL', '2026-11-26T21:30:00Z', { total: 46, margin: 12, why: 'a typical total; ESPN gives the Cowboys 81%' }),
+  ...nflEntries('NFL-KC-BUF', '26NOV26KCBUF', 'BUF', '2026-11-27T01:20:00Z', { total: 46, margin: 3, why: 'a typical total; ESPN gives the Bills 60%' }),
 
   'HOUSE-R-2026': {
     guards: { scale: 8, sane: [150, 290] },
@@ -370,7 +415,8 @@ export interface Deps {
 export function createModel(m: Market, deps: Deps): Model | null {
   const entry = CATALOG[m.underlying];
   if (!entry) return null;
-  const model = modelOf(entry, m, deps);
+  const sizing = entry.margin === undefined ? deps.sizing : { ...deps.sizing, ladder: { ...deps.sizing.ladder, margin: entry.margin } };
+  const model = modelOf(entry, m, { ...deps, sizing });
   if (model instanceof DistModel) model.guards = guardsOf(entry, m);
   return model;
 }
@@ -378,28 +424,27 @@ export function createModel(m: Market, deps: Deps): Model | null {
 /** Elon's post history, read once for both his books. */
 let elonLog: PostLog | null = null;
 
-const offlineList = (e: Entry): Listing[] => (e.offline === undefined ? [] : Array.isArray(e.offline) ? e.offline : [e.offline]);
 /** The markets an entry lists for reading before the exchange lists them. */
-export const offlineListings = offlineList;
+export const offlineListings = (e: Entry): Listing[] => (e.offline === undefined ? [] : Array.isArray(e.offline) ? e.offline : [e.offline]);
 
 function modelOf(entry: Entry, m: Market, deps: Deps): Model | null {
   const s = entry.spec;
   switch (s.model) {
     case 'feed': {
       const cal = { ...s.calibration, ...deps.feed };
-      return new FeedModel((spot, sigma, h, g) => feedLadder(spot, sigma, h, g, cal), s.quoteWhenNotLive || !!deps.quoteNotLive, `${m.underlying} price (Rizon's feed)`);
+      return new FeedModel((spot, sigma, h, g) => feedLadder(spot, sigma, h, g, cal), !!deps.quoteNotLive, `${m.underlying} price (Rizon's feed)`);
     }
     case 'sigmaFeed': {
       const cal = { ...s.calibration, ...deps.feed };
-      return new FeedModel((spot, sigma, h, g) => sigmaLadder(spot, sigma, h, g, cal), s.quoteWhenNotLive || !!deps.quoteNotLive, `${m.underlying} price (Rizon's feed)`, s.maxAgeMs);
+      return new FeedModel((spot, sigma, h, g) => sigmaLadder(spot, sigma, h, g, cal), !!deps.quoteNotLive, `${m.underlying} price (Rizon's feed)`, s.maxAgeMs);
     }
     case 'elon':
       // a horizon of whole days: 1 or 7
       return new ElonModel(Math.max(1, Math.round((m.horizon ?? 86_400) / 86_400)), (elonLog ??= new PostLog('elonmusk', HISTORY_DAYS)), deps.sizing, undefined, !!deps.quoteNotLive);
     case 'event':
-      return new EventModel(s.sources, { value: s.value, support: s.support, drop: s.drop, conditional: s.conditional }, deps.sizing, s.checks);
+      return new EventModel(s.sources, { value: s.value, support: s.support, drop: s.drop, conditional: s.conditional }, deps.sizing, s.checks, s.prior);
     case 'date':
-      return new DateModel(s.sources, s.zone, () => deps.listing().deadline ?? offlineList(entry)[0]?.deadline ?? NaN, deps.sizing, s.checks);
+      return new DateModel(s.sources, s.zone, () => deps.listing().deadline ?? offlineListings(entry)[0]?.deadline ?? NaN, deps.sizing, s.checks);
     case 'maxYield':
       return new MaxYieldModel(s.slug, { from: s.from, to: s.to, cap: s.cap }, deps.sizing);
     case 'uptime':

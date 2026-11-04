@@ -1,0 +1,218 @@
+{
+"event": {
+"event_ticker": "KXNFLTOTAL-26NOV08DETMIA",
+"mutually_exclusive": false,
+"title": "Detroit vs Miami: Total Points",
+"markets": [
+{
+"ticker": "KXNFLTOTAL-26NOV08DETMIA-28",
+"yes_sub_title": "Over 27.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 27.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.9400",
+"yes_ask_dollars": "0.9800",
+"last_price_dollars": "0.0000"
+},
+{
+"ticker": "KXNFLTOTAL-26NOV08DETMIA-31",
+"yes_sub_title": "Over 30.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 30.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.9500",
+"yes_ask_dollars": "0.9600",
+"last_price_dollars": "0.9500"
+},
+{
+"ticker": "KXNFLTOTAL-26NOV08DETMIA-34",
+"yes_sub_title": "Over 33.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 33.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.9100",
+"yes_ask_dollars": "0.9300",
+"last_price_dollars": "0.9200"
+},
+{
+"ticker": "KXNFLTOTAL-26NOV08DETMIA-37",
+"yes_sub_title": "Over 36.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 36.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.8700",
+"yes_ask_dollars": "0.8900",
+"last_price_dollars": "0.8700"
+},
+{
+"ticker": "KXNFLTOTAL-26NOV08DETMIA-40",
+"yes_sub_title": "Over 39.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 39.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.8000",
+"yes_ask_dollars": "0.8200",
+"last_price_dollars": "0.0000"
+},
+{
+"ticker": "KXNFLTOTAL-26NOV08DETMIA-43",
+"yes_sub_title": "Over 42.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 42.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.7200",
+"yes_ask_dollars": "0.7300",
+"last_price_dollars": "0.7400"
+},
+{
+"ticker": "KXNFLTOTAL-26NOV08DETMIA-46",
+"yes_sub_title": "Over 45.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 45.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.6400",
+"yes_ask_dollars": "0.6500",
+"last_price_dollars": "0.6600"
+},
+{
+"ticker": "KXNFLTOTAL-26NOV08DETMIA-47",
+"yes_sub_title": "Over 46.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 46.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.6100",
+"yes_ask_dollars": "0.6300",
+"last_price_dollars": "0.0000"
+},
+{
+"ticker": "KXNFLTOTAL-26NOV08DETMIA-48",
+"yes_sub_title": "Over 47.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 47.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.5800",
+"yes_ask_dollars": "0.5900",
+"last_price_dollars": "0.0000"
+},
+{
+"ticker": "KXNFLTOTAL-26NOV08DETMIA-49",
+"yes_sub_title": "Over 48.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 48.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.5500",
+"yes_ask_dollars": "0.5600",
+"last_price_dollars": "0.5600"
+},
+{
+"ticker": "KXNFLTOTAL-26NOV08DETMIA-50",
+"yes_sub_title": "Over 49.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 49.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.5200",
+"yes_ask_dollars": "0.5300",
+"last_price_dollars": "0.5300"
+},
+{
+"ticker": "KXNFLTOTAL-26NOV08DETMIA-51",
+"yes_sub_title": "Over 50.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 50.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.4800",
+"yes_ask_dollars": "0.4900",
+"last_price_dollars": "0.4900"
+},
+{
+"ticker": "KXNFLTOTAL-26NOV08DETMIA-52",
+"yes_sub_title": "Over 51.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 51.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.4400",
+"yes_ask_dollars": "0.4500",
+"last_price_dollars": "0.4500"
+},
+{
+"ticker": "KXNFLTOTAL-26NOV08DETMIA-55",
+"yes_sub_title": "Over 54.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 54.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.3500",
+"yes_ask_dollars": "0.3700",
+"last_price_dollars": "0.0000"
+},
+{
+"ticker": "KXNFLTOTAL-26NOV08DETMIA-58",
+"yes_sub_title": "Over 57.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 57.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.2600",
+"yes_ask_dollars": "0.2800",
+"last_price_dollars": "0.2900"
+},
+{
+"ticker": "KXNFLTOTAL-26NOV08DETMIA-61",
+"yes_sub_title": "Over 60.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 60.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.2000",
+"yes_ask_dollars": "0.2200",
+"last_price_dollars": "0.2200"
+},
+{
+"ticker": "KXNFLTOTAL-26NOV08DETMIA-64",
+"yes_sub_title": "Over 63.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 63.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.1300",
+"yes_ask_dollars": "0.1600",
+"last_price_dollars": "0.0000"
+},
+{
+"ticker": "KXNFLTOTAL-26NOV08DETMIA-67",
+"yes_sub_title": "Over 66.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 66.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.0900",
+"yes_ask_dollars": "0.1100",
+"last_price_dollars": "0.1100"
+},
+{
+"ticker": "KXNFLTOTAL-26NOV08DETMIA-70",
+"yes_sub_title": "Over 69.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 69.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.0400",
+"yes_ask_dollars": "0.0700",
+"last_price_dollars": "0.0000"
+}
+]
+}
+}

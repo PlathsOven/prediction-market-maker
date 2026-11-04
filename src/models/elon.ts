@@ -27,11 +27,11 @@
 // it is: the exchange takes no orders on it after 2 minutes, and a post or two in the meantime is far inside the
 // spread.
 import type { Market } from '../api.ts';
-import type { View } from '../analogs.ts';
-import { bucketDist, bucketSpread, fitBuckets } from '../buckets.ts';
+import { type View, bucketView } from '../analogs.ts';
+import { bucketDist, fitBuckets } from '../buckets.ts';
 import { Dist, type Segment } from '../dist.ts';
 import { type PmEvent, parseLabel, pmEvent, tradingMarkets } from '../sources/polymarket.ts';
-import { type PostLog, type Tracking, trackingStats, trackings } from '../sources/xtracker.ts';
+import { type PostLog, type Tracking, trackingTotal, trackings } from '../sources/xtracker.ts';
 import { type Built, type Check, DistModel, type Sizing, THIN_SPREAD, type Target, type Tick, Unreadable, disagreement, hold } from './model.ts';
 
 const DAY = 86_400_000;
@@ -129,18 +129,19 @@ export function viewCountBuckets(ev: PmEvent, count: number, support: readonly [
   const fitted = fitBuckets(buckets);
   if (!fitted.length) throw new Unreadable(`no trading buckets in ${ev.slug}`);
   // the count can only rise: everything under it is gone
-  const dist = bucketDist(fitted, { type: 'integer' }, support).truncate(count - 0.5);
-  return { name: `Polymarket ${ev.slug}`, dist, spread: bucketSpread(fitted), rows: fitted.map((b) => ({ label: b.label, bid: b.bid, ask: b.ask, p: b.p })) };
+  return bucketView(`Polymarket ${ev.slug}`, bucketDist(fitted, { type: 'integer' }, support).truncate(count - 0.5), fitted);
 }
+
+/** How well a window's time left matches the horizon, as a ratio: 1 when they're equal. */
+const fitOf = (t: Tracking, now: number, hMs: number): number => Math.min(t.end - now, hMs) / Math.max(t.end - now, hMs);
 
 /**
  * The Polymarket window to check a horizon against: open now, with a Polymarket event and at least half the
  * horizon left, the one whose time left is nearest the horizon (as a ratio).
  */
 export function windowFor(list: readonly Tracking[], now: number, hMs: number): Tracking | null {
-  const fit = (t: Tracking) => Math.min(t.end - now, hMs) / Math.max(t.end - now, hMs);
   const open = list.filter((t) => t.slug && t.start <= now && t.end - now >= hMs / 2);
-  return open.sort((a, b) => fit(b) - fit(a))[0] ?? null;
+  return open.sort((a, b) => fitOf(b, now, hMs) - fitOf(a, now, hMs))[0] ?? null;
 }
 
 /** Polymarket's view of X, and how well its window matches the horizon: 1 when its time left is the horizon. */
@@ -154,14 +155,14 @@ export interface PolymarketView extends Check {
 export async function polymarketCheck(now: number, hMs: number): Promise<PolymarketView> {
   const t = windowFor(await trackings('elonmusk'), now, hMs);
   if (!t?.slug) throw new Error('no open Polymarket window to check against');
-  const [stats, ev] = await Promise.all([trackingStats(t.id), pmEvent(t.slug)]);
-  const v = viewCountBuckets(ev, stats.total, [0, 10_000]);
-  const left = v.dist.median() - stats.total;
+  const [total, ev] = await Promise.all([trackingTotal(t.id), pmEvent(t.slug)]);
+  const v = viewCountBuckets(ev, total, [0, 10_000]);
+  const left = v.dist.median() - total;
   const hoursLeft = (t.end - now) / 3_600_000;
   return {
     name: `Polymarket ${t.slug} (${Math.round(left)} more in its last ${hoursLeft.toFixed(0)} h)`,
     median: (left * hMs) / (t.end - now),
-    fit: Math.min(t.end - now, hMs) / Math.max(t.end - now, hMs),
+    fit: fitOf(t, now, hMs),
     thin: v.spread > THIN_SPREAD,
   };
 }
@@ -236,7 +237,7 @@ export class ElonModel extends DistModel {
   }
 
   /** The count at expiry: the count now (the price channel's, else the listing's) plus X. */
-  distOf(b: Built, m: Market, _now: number, last?: Tick): Dist | string {
+  distOf(b: Built, m: Market, last?: Tick): Dist | string {
     const count = last?.price ?? m.spot;
     return count === null || count === undefined ? 'no count yet' : b.dist.shift(count);
   }

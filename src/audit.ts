@@ -13,16 +13,15 @@ import { type PolymarketBuckets, viewKalshi, viewPmBuckets, viewPmLadder } from 
 import { config } from './config.ts';
 import { Dist, normInv } from './dist.ts';
 import { fmtValue } from './format.ts';
-import { BTC_FEED, GOLD_SIGMA, feedLadder, sigmaLadder } from './ladder.ts';
-import { gridOf } from './grid.ts';
-import { getJson } from './http.ts';
 import { jdnOf } from './grid.ts';
+import { getJson } from './http.ts';
 import { marketsToRead } from './listing.ts';
 import { CATALOG, createModel, guardsOf } from './markets.ts';
 import { viewPmDates, viewPmDays } from './models/date.ts';
 import { polymarketCheck, polymarketWeight } from './models/elon.ts';
 import { DistModel, type Model } from './models/model.ts';
 import { windowUptimes } from './models/uptime.ts';
+import { businessDaysLeft } from './models/ust10y.ts';
 import { Rest } from './rizon.ts';
 import { ksEvent } from './sources/kalshi.ts';
 import { USD_BILLIONS, atLastTrades, pmEvent } from './sources/polymarket.ts';
@@ -104,8 +103,7 @@ const REFERENCES: Record<string, (m: Market) => Promise<Reference>> = {
     const recent = closes.slice(-61).map((c) => c.value);
     const moves = recent.slice(1).map((v, i) => v - recent[i]);
     const sd = Math.sqrt(moves.reduce((a, d) => a + d * d, 0) / moves.length);
-    let left = 0;
-    for (let d = now + 86_400_000; new Date(d).toISOString().slice(0, 10) <= '2026-12-31'; d += 86_400_000) if (![0, 6].includes(new Date(d).getUTCDay())) left++;
+    const left = businessDaysLeft(now, '2026-12-31');
     const x0 = closes.at(-1)!.value;
     const floor = Math.max(x0, ...closes.filter((c) => c.day >= '2026-10-29').map((c) => c.value));
     const s = sd * Math.sqrt(left);
@@ -134,12 +132,12 @@ const REFERENCES: Record<string, (m: Market) => Promise<Reference>> = {
 async function uptimeReference(m: Market): Promise<Reference> {
   const n = Math.round((m.horizon ?? 0) / 86_400);
   if (m.underlying.startsWith('CLAUDE')) {
-    const h = await atlassianHistory('https://status.claude.com', 'rwppv331jlwc', 2);
+    const days = await atlassianHistory('https://status.claude.com', 'rwppv331jlwc', 2);
     if (n === 30) {
       const show = await getJson<{ values: { thirty: number }[] }>('https://status.claude.com/uptime_showcase?components=rwppv331jlwc', 10 * 60_000);
       return { name: 'status.claude.com: its published 30-day uptime', value: show.values[0].thirty };
     }
-    return { name: `status.claude.com: its last ${n} whole day${n > 1 ? 's' : ''}, as published`, value: publishedUptime(h.days, n) };
+    return { name: `status.claude.com: its last ${n} whole day${n > 1 ? 's' : ''}, as published`, value: publishedUptime(days, n) };
   }
   const home = await instatusHome('https://status.polymarket.com', 'cljg99p53207029broc36bdpn0h');
   return { name: `status.polymarket.com: its last ${n} whole day${n > 1 ? 's' : ''}, from its outages`, value: publishedUptime(outageDays(home.outages, home.from, Math.min(home.to, now)), n) };
@@ -156,7 +154,7 @@ for (const { market, fromExchange } of await marketsToRead(listed, true)) {
   if (model instanceof DistModel) {
     await model.refresh(now);
     const b = model.current(now);
-    const d = b ? model.distOf(b, market, now) : null;
+    const d = b ? model.distOf(b, market) : null;
     fair = d && typeof d !== 'string' ? d.median() : null;
     note = model.held ?? model.problem ?? model.target(market, now).note ?? '';
   } else fair = market.spot;

@@ -116,15 +116,15 @@ export interface FeedCalibration {
   size: number;
 }
 
-/** BTC: 2 strikes ($2) at 15 s, so 4 at 1 m and 9 at 5 m, calm at 45% a year; ten levels of $1,000 a side. */
-export const BTC_FEED: FeedCalibration = { vol: 0.45, width: 2, horizon: 15, levels: 10, size: 1_000 };
+/** BTC: 1 strike ($1) at 15 s, so 2 at 1 m and 4 at 5 m, calm at 45% a year; ten levels of $1,000 a side. */
+export const BTC_FEED: FeedCalibration = { vol: 0.45, width: 1, horizon: 15, levels: 10, size: 1_000 };
 
 const YEAR_S = 365 * 24 * 3600;
 /** A volatility a year, per root second. */
 export const perRootSecond = (annual: number): number => annual / Math.sqrt(YEAR_S);
 const clamp = (x: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, x));
 
-/** Best ask minus best bid, in strikes (BTC: 2 / 4 / 9 at 15 s / 1 m / 5 m, up to 3× while volatility runs high). */
+/** Best ask minus best bid, in strikes (BTC: 1 / 2 / 4 at 15 s / 1 m / 5 m, up to 3× while volatility runs high). */
 export function quoteWidth(horizon: number, sigmaS: number, cal: FeedCalibration = BTC_FEED): number {
   const m = clamp(sigmaS / perRootSecond(cal.vol), 1, 3);
   return Math.max(cal.width, Math.round(cal.width * Math.sqrt(horizon / cal.horizon) * m));
@@ -133,8 +133,8 @@ export function quoteWidth(horizon: number, sigmaS: number, cal: FeedCalibration
 /**
  * One feed book's quotes around spot. sigma is the market's one-sigma move over the horizon (GET /markets; 0
  * while it has too few ticks). The number at expiry is about normal around spot with that sigma: the best bid
- * and ask sit quoteWidth strikes apart, centred on spot (on BTC near $80,000 at calm volatility about ±0.04σ, so
- * a taker wins about 48.4%), and the other levels sit on a fixed grid of multiples of 6% of sigma beyond them,
+ * and ask sit quoteWidth strikes apart, centred on spot (on BTC near $80,000 at calm volatility about ±0.02σ, so
+ * a taker wins about 49.2%), and the other levels sit on a fixed grid of multiples of 6% of sigma beyond them,
  * all one size, so a small move changes only the best levels and an end of the ladder.
  */
 export function feedLadder(spot: number, sigma: number, horizon: number, g: Grid, cal: FeedCalibration = BTC_FEED): Quote[] {
@@ -142,22 +142,28 @@ export function feedLadder(spot: number, sigma: number, horizon: number, g: Grid
   const sigmaS = sigma > 0 ? sigma / (spot * Math.sqrt(horizon)) : seed;
   const sigmaUnits = sigma > 0 ? sigma : spot * seed * Math.sqrt(horizon);
   const width = quoteWidth(horizon, sigmaS, cal);
-  const spacing = Math.max(1, Math.round((0.06 * sigmaUnits) / g.step));
   const bestBid = Math.round(indexOf(g, spot) - width / 2);
-  const bestAsk = bestBid + width;
+  return feedQuotes(g, bestBid, bestBid + width, Math.max(1, Math.round((0.06 * sigmaUnits) / g.step)), cal.levels, cal.size);
+}
+
+/**
+ * A feed book from its best bid and ask (strike indices) out: the other levels on multiples of `spacing` strikes
+ * beyond them, `levels` a side in all, one size, within the market's strikes.
+ */
+function feedQuotes(g: Grid, bestBid: number, bestAsk: number, spacing: number, levels: number, size: number): Quote[] {
   const lo = minIndex(g);
   const hi = maxIndex(g);
   const ok = (n: number) => strikeAt(g, n) > 0 && (lo === null || n >= lo) && (hi === null || n <= hi);
   const quotes: Quote[] = [];
-  if (ok(bestBid)) quotes.push({ side: 'up', strike: strikeAt(g, bestBid), size: cal.size });
-  if (ok(bestAsk)) quotes.push({ side: 'down', strike: strikeAt(g, bestAsk), size: cal.size });
+  if (ok(bestBid)) quotes.push({ side: 'up', strike: strikeAt(g, bestBid), size });
+  if (ok(bestAsk)) quotes.push({ side: 'down', strike: strikeAt(g, bestAsk), size });
   const below = Math.floor((bestBid - 1) / spacing);
   const above = Math.ceil((bestAsk + 1) / spacing);
-  for (let i = 0; i < cal.levels - 1; i++) {
+  for (let i = 0; i < levels - 1; i++) {
     const bid = (below - i) * spacing;
-    if (ok(bid)) quotes.push({ side: 'up', strike: strikeAt(g, bid), size: cal.size });
+    if (ok(bid)) quotes.push({ side: 'up', strike: strikeAt(g, bid), size });
     const ask = (above + i) * spacing;
-    if (ok(ask)) quotes.push({ side: 'down', strike: strikeAt(g, ask), size: cal.size });
+    if (ok(ask)) quotes.push({ side: 'down', strike: strikeAt(g, ask), size });
   }
   return quotes;
 }
@@ -165,9 +171,8 @@ export function feedLadder(spot: number, sigma: number, horizon: number, g: Grid
 // ---- the sigma ladder: BTC's, written in sigmas (Gold) ---------------------------------------------------------
 
 /**
- * BTC's ladder measured in its own sigma: near $80,000 its calm 2-strike touch is about ±0.04σ and its outer levels
- * sit 6% of sigma apart. A market whose strikes are coarse next to its moves (gold: $0.10 strikes against a
- * 15-second sigma of about $0.55) can't copy a width in strikes, but it can copy those distances in sigma: the best
+ * A feed ladder measured in sigma, for a market whose strikes are coarse next to its moves (gold: $0.10 strikes
+ * against a 15-second sigma of about $0.55), where a width in strikes wouldn't mean much: the best
  * bid is the highest strike at least touch × sigma under spot, the best ask the lowest at least as far over it, and
  * the other levels sit on a fixed grid of multiples of spacing × sigma (at least a strike) beyond them.
  */
@@ -182,7 +187,7 @@ export interface SigmaCalibration {
   size: number;
 }
 
-/** Gold, as BTC near $80,000 in sigmas: a touch at ±0.04σ, levels 0.06σ apart; sigma no lower than 12% a year. */
+/** Gold: a touch at ±0.04σ, levels 0.06σ apart; sigma no lower than 12% a year. */
 export const GOLD_SIGMA: SigmaCalibration = { minVol: 0.12, touch: 0.04, spacing: 0.06, levels: 10, size: 1_000 };
 
 /** One sigma-ladder book around spot (sigma: the market's one-sigma move over the horizon, 0 while unknown). */
@@ -191,20 +196,7 @@ export function sigmaLadder(spot: number, sigma: number, horizon: number, g: Gri
   // the highest strike at or under spot − touch σ, and the lowest at or over spot + touch σ
   const bestBid = Math.floor(indexOf(g, spot - cal.touch * s) + 1e-9);
   const bestAsk = Math.ceil(indexOf(g, spot + cal.touch * s) - 1e-9);
-  const spacing = Math.max(1, Math.round((cal.spacing * s) / g.step));
-  const lo = minIndex(g);
-  const hi = maxIndex(g);
-  const ok = (n: number) => strikeAt(g, n) > 0 && (lo === null || n >= lo) && (hi === null || n <= hi);
-  const quotes: Quote[] = [];
-  if (ok(bestBid)) quotes.push({ side: 'up', strike: strikeAt(g, bestBid), size: cal.size });
-  if (ok(bestAsk)) quotes.push({ side: 'down', strike: strikeAt(g, bestAsk), size: cal.size });
-  const below = Math.floor((bestBid - 1) / spacing);
-  const above = Math.ceil((bestAsk + 1) / spacing);
-  for (let i = 0; i < cal.levels - 1; i++) {
-    if (ok((below - i) * spacing)) quotes.push({ side: 'up', strike: strikeAt(g, (below - i) * spacing), size: cal.size });
-    if (ok((above + i) * spacing)) quotes.push({ side: 'down', strike: strikeAt(g, (above + i) * spacing), size: cal.size });
-  }
-  return quotes;
+  return feedQuotes(g, bestBid, bestAsk, Math.max(1, Math.round((cal.spacing * s) / g.step)), cal.levels, cal.size);
 }
 
 // ---- re-quoting -----------------------------------------------------------------------------------------------

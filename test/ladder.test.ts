@@ -118,11 +118,11 @@ describe('the feed ladder (BTC, as Rizon\'s maker has always quoted it)', () => 
   const sigmaAt = (spot: number, horizon: number, sigmaS = SEED) => spot * sigmaS * Math.sqrt(horizon);
   const dollars = grid(1, 0);
 
-  test('best bid and ask are 2 / 4 / 9 strikes apart in calm markets, widening up to 3x with volatility', () => {
-    expect([15, 60, 300].map((h) => quoteWidth(h, SEED))).toEqual([2, 4, 9]);
-    expect([15, 60, 300].map((h) => quoteWidth(h, SEED / 2))).toEqual([2, 4, 9]);
-    expect([15, 60, 300].map((h) => quoteWidth(h, 2 * SEED))).toEqual([4, 8, 18]);
-    expect(quoteWidth(15, 10 * SEED)).toBe(6);
+  test('best bid and ask are 1 / 2 / 4 strikes apart in calm markets, widening up to 3x with volatility', () => {
+    expect([15, 60, 300].map((h) => quoteWidth(h, SEED))).toEqual([1, 2, 4]);
+    expect([15, 60, 300].map((h) => quoteWidth(h, SEED / 2))).toEqual([1, 2, 4]);
+    expect([15, 60, 300].map((h) => quoteWidth(h, 2 * SEED))).toEqual([2, 4, 9]);
+    expect(quoteWidth(15, 10 * SEED)).toBe(3);
   });
 
   test('centred on spot, ten levels a side of one size, the outer nine on a grid of 6% of sigma', () => {
@@ -149,17 +149,17 @@ describe('the feed ladder (BTC, as Rizon\'s maker has always quoted it)', () => 
     expect(feedLadder(100_000, 0, 60, dollars)).toEqual(feedLadder(100_000, sigmaAt(100_000, 60), 60, dollars));
   });
 
-  test('near $80,000 the calm touch is about ±0.04σ: what gold\'s sigma ladder copies', () => {
+  test('near $80,000 the calm touch is about ±0.02σ, so a taker at the touch wins about 49%', () => {
     for (const horizon of [15, 60, 300]) {
       const sigma = sigmaAt(80_000, horizon);
       const qs = feedLadder(80_000.4, sigma, horizon, dollars);
-      expect((asks(qs)[0] - bids(qs)[0]) / 2 / sigma).toBeGreaterThan(0.035);
-      expect((asks(qs)[0] - bids(qs)[0]) / 2 / sigma).toBeLessThan(0.045);
+      expect((asks(qs)[0] - bids(qs)[0]) / 2 / sigma).toBeGreaterThan(0.015);
+      expect((asks(qs)[0] - bids(qs)[0]) / 2 / sigma).toBeLessThan(0.025);
     }
   });
 });
 
-describe('the sigma ladder (Gold: BTC in sigmas)', () => {
+describe('the sigma ladder (Gold)', () => {
   const cents = grid(0.1, 0);
   const sigmaOf = (spot: number, horizon: number, vol: number) => spot * perRootSecond(vol) * Math.sqrt(horizon);
 
@@ -236,8 +236,8 @@ describe('re-quoting', () => {
   test('new quotes go out nearest the centre first; strays, duplicates and half-filled quotes are replaced', () => {
     const target = feedLadder(100_000, sigmaAt(100_000, 15), 15, dollars);
     const resting: Resting[] = [
-      { id: 'keep', market: 'BTC-15s', side: 'up', strike: 99_999, remaining: 1_000 },
-      { id: 'dup', market: 'BTC-15s', side: 'up', strike: 99_999, remaining: 1_000 },
+      { id: 'keep', market: 'BTC-15s', side: 'up', strike: 100_000, remaining: 1_000 },
+      { id: 'dup', market: 'BTC-15s', side: 'up', strike: 100_000, remaining: 1_000 },
       { id: 'thin', market: 'BTC-15s', side: 'down', strike: 100_001, remaining: 499 },
       { id: 'stray', market: 'BTC-15s', side: 'down', strike: 100_500, remaining: 1_000 },
     ];

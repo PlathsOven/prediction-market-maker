@@ -3,7 +3,7 @@
 // It lists the markets (the markets channel the moment one opens or closes, and GET /markets every 5 s), makes a
 // model for each one it knows (src/markets.ts), and keeps one WebSocket open for prices and its own orders,
 // positions and account. Feed markets (and ELON's count) re-quote on every price; polled models (another venue, a
-// status page, a post history) every 30-60 s, when what they read changes. Each re-quote is one batch (POST
+// status page, a post history) every 45-60 s, when what they read changes. Each re-quote is one batch (POST
 // /orders/batch over the socket): the quotes that moved are canceled and their replacements placed inside the
 // exchange's order limit, a side with nothing resting first (every book two-sided before any gets its depth), then
 // best levels first; a feed book's side that a move left safer may lag a little (src/ladder.ts sticky), and slower
@@ -90,7 +90,7 @@ export class Runner {
   /** Since when a market's book has differed from its target (a price moved, a source changed). */
   private dirtySince = new Map<string, number>();
   /** How long each market's book took to match a new target, last 200 re-quotes (ms). */
-  readonly latencies = new Map<string, number[]>();
+  private readonly latencies = new Map<string, number[]>();
   /** The sigma each feed book quotes with: it follows the listing's only once that's 10% away (see target()). */
   private sigmas = new Map<string, number>();
 
@@ -127,9 +127,7 @@ export class Runner {
     this.markets = new Map(allowed.map((m) => [m.id, m]));
     for (const m of allowed) {
       if (this.models.has(m.id) || this.skipped.has(m.id)) continue;
-      // models that follow an underlying's own history (ELON's count) are shared by its markets
-      const shared = [...this.models.entries()].find(([id, x]) => x.shared && this.markets.get(id)?.underlying === m.underlying)?.[1];
-      const model = shared ?? (this.o.create ?? createModel)(m, this.deps(m.id));
+      const model = (this.o.create ?? createModel)(m, this.deps(m.id));
       if (!model) {
         this.skipped.add(m.id);
         this.o.log(`${m.id}: no model for ${m.underlying}, not quoting it`);
@@ -137,23 +135,20 @@ export class Runner {
       }
       this.models.set(m.id, model);
       this.o.log(`${m.id}: quoting from ${model.source}`);
-      if (model.refresh && !this.polls.has(model)) this.poll(model);
+      if (model.refresh) this.poll(model);
     }
-    for (const id of [...this.models.keys()]) {
+    for (const [id, model] of [...this.models]) {
       if (this.markets.has(id)) continue;
-      const model = this.models.get(id)!;
       this.models.delete(id);
-      if (![...this.models.values()].includes(model)) {
-        const t = this.polls.get(model);
-        if (t) clearTimeout(t);
-        this.polls.delete(model);
-      }
+      const t = this.polls.get(model);
+      if (t) clearTimeout(t);
+      this.polls.delete(model);
     }
     // an underlying with a price channel takes its prices from there; the others from each listing
     const followed = new Set(this.priceChannels().map((c) => c.slice('price:'.length)));
     for (const m of allowed) {
       if (m.spot === null || (followed.has(m.underlying) && this.ticks.has(m.underlying))) continue;
-      this.ticks.set(m.underlying, { t: Date.now(), price: m.spot, live: m.live, at: Date.now() });
+      this.ticks.set(m.underlying, { price: m.spot, live: m.live, at: Date.now() });
     }
     const wanted = this.priceChannels();
     const missing = wanted.filter((c) => !this.channels.has(c));
@@ -229,7 +224,7 @@ export class Runner {
         this.backoff = 1_000;
         this.channels = new Set(m.data.channels);
         this.setMarkets(m.data.markets);
-        for (const mk of m.data.markets) if (mk.spot !== null) this.ticks.set(mk.underlying, { t: m.data.t, price: mk.spot, live: mk.live, at: Date.now() });
+        for (const mk of m.data.markets) if (mk.spot !== null) this.ticks.set(mk.underlying, { price: mk.spot, live: mk.live, at: Date.now() });
         // quotes and positions left from before (a restart): adopted, then re-quoted like any other
         this.resting.clear();
         for (const o of m.data.orders) this.track(o);
@@ -243,17 +238,9 @@ export class Runner {
       }
       case 'markets':
         return this.setMarkets(m.data);
-      case 'price': {
-        const tick = { t: m.data.t, price: m.data.price, live: m.data.live, at: Date.now() };
-        this.ticks.set(m.data.underlying, tick);
-        const seen = new Set<Model>();
-        for (const [id, model] of this.models) {
-          if (seen.has(model) || this.markets.get(id)?.underlying !== m.data.underlying) continue;
-          seen.add(model);
-          model.onPrice?.(tick);
-        }
+      case 'price':
+        this.ticks.set(m.data.underlying, { price: m.data.price, live: m.data.live, at: Date.now() });
         return this.requote();
-      }
       case 'order':
         return this.track(m.data);
       case 'position':

@@ -8,7 +8,7 @@ import { viewMaxYield } from '../src/models/ust10y.ts';
 import { parsePmEvent } from '../src/sources/polymarket.ts';
 import { PARTIAL_WEIGHT, outageDays, parseAtlassianStatus, parseInstatusHome, parseInstatusStatus, parseShowcase } from '../src/sources/statuspage.ts';
 import { mergeCloses, parseFredCsv, parseTreasuryCsv } from '../src/sources/treasury.ts';
-import { parseStats, parseTrackings } from '../src/sources/xtracker.ts';
+import { parseTotal, parseTrackings } from '../src/sources/xtracker.ts';
 
 const F = `${import.meta.dir}/fixtures`;
 const text = (f: string) => Bun.file(`${F}/${f}`).text();
@@ -58,7 +58,7 @@ describe('XTracker and Polymarket\'s Elon windows (the ELON books\' check)', () 
     const week = list.find((t) => t.slug === 'elon-musk-of-tweets-october-30-november-6-2026');
     // it ends after the clocks change: noon ET is 17:00 UTC (XTracker stops a second before)
     expect(week && [new Date(week.start).toISOString(), new Date(week.end).toISOString()]).toEqual(['2026-10-30T16:00:00.000Z', '2026-11-06T16:59:59.000Z']);
-    expect(parseStats(await json('xtracker-tracking-1023.json')).total).toBe(282);
+    expect(parseTotal(await json('xtracker-tracking-1023.json'))).toBe(282);
   });
 
   test('the window to check against: open, at least half the horizon left, its time left nearest the horizon', async () => {

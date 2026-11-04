@@ -82,23 +82,18 @@ export class Dist {
     return this.quantile(0.5);
   }
 
-  mean(): number {
-    return this.atoms.reduce((t, [x, p]) => t + x * p, 0) + this.segments.reduce((t, g) => t + ((g.lo + g.hi) / 2) * g.p, 0);
-  }
-
   /** The smallest and largest values with any probability. */
   support(): [number, number] {
     const xs = this.breakpoints();
     return [xs[0], xs[xs.length - 1]];
   }
 
-  /** The distribution given lo ≤ X ≤ hi (renormalised): what's left once a floor or a ceiling is known. */
-  truncate(lo = -Infinity, hi = Infinity): Dist {
-    const atoms = this.atoms.filter(([x]) => x >= lo && x <= hi);
+  /** The distribution given X ≥ lo (renormalised): what's left once a floor is known. */
+  truncate(lo: number): Dist {
+    const atoms = this.atoms.filter(([x]) => x >= lo);
     const segments = this.segments.flatMap((g) => {
       const a = Math.max(g.lo, lo);
-      const b = Math.min(g.hi, hi);
-      return b > a ? [{ lo: a, hi: b, p: (g.p * (b - a)) / (g.hi - g.lo) }] : [];
+      return g.hi > a ? [{ lo: a, hi: g.hi, p: (g.p * (g.hi - a)) / (g.hi - g.lo) }] : [];
     });
     return new Dist(atoms, segments);
   }

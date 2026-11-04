@@ -1,7 +1,7 @@
 // What every model gives the runner: for one market, the ladder it wants resting now.
 //
 // Feed models (BTC, Gold) re-quote on every price; distribution models (everything that reads another venue, a
-// status page or a post history) poll their sources every 30-60 s, keep the distribution they built, and quote it
+// status page or a post history) poll their sources every 45-60 s, keep the distribution they built, and quote it
 // with the quantile ladder (ELON's also re-quote on every post, around the count). Their fair value (the
 // distribution's median) is guarded, and the book stays two-sided wherever that's safe:
 //   - outside the market's sane range it isn't quoted at all;
@@ -33,8 +33,6 @@ export interface Target {
 }
 
 export interface Tick {
-  /** The server's time for it. */
-  t: number;
   price: number;
   live: boolean;
   /** When it arrived here (this machine's clock), to tell how fresh it is. */
@@ -48,12 +46,8 @@ export interface Model {
   readonly pollMs?: number;
   /** It quotes off the underlying's price channel (re-quoting on every price). */
   readonly follows?: boolean;
-  /** One instance serves every market on its underlying (it keeps the underlying's own history). */
-  readonly shared?: boolean;
   /** Reads the model's sources. */
   refresh?(now: number): Promise<void>;
-  /** Each price of the market's underlying, from Rizon's price channel. */
-  onPrice?(tick: Tick): void;
   /** The quotes for market m now; last is the underlying's latest price, when there is one. */
   target(m: Market, now: number, last?: Tick): Target;
 }
@@ -62,7 +56,7 @@ export interface Model {
 export const none = (reason: string, center = 0): Target => ({ quotes: [], center, reason });
 
 /** The answer when the quotes resting now should stay as they are (see Target.hold). */
-export const hold = (reason: string, center = 0): Target => ({ quotes: [], center, reason: `${reason}: quotes left as they are`, hold: true });
+export const hold = (reason: string, center: number): Target => ({ quotes: [], center, reason: `${reason}: quotes left as they are`, hold: true });
 
 /** A source answered with something the model can't read: quoting stops at once, not after the stale timeout. */
 export class Unreadable extends Error {}
@@ -102,7 +96,6 @@ export interface Built {
   dist: Dist;
   thin: boolean;
   reports: SourceReport[];
-  note?: string;
   /** Pull the book (an outage going on now): the view is fine, but the next minutes aren't like the history. */
   unsure?: string;
   /** Quote wider than usual by this much margin, and why. */
@@ -134,7 +127,6 @@ export function strikesOf(m: Market, now: number): Grid {
 export abstract class DistModel implements Model {
   abstract readonly source: string;
   readonly pollMs: number = 45_000;
-  readonly follows?: boolean;
   built: Built | null = null;
   readAt = -Infinity;
   problem: string | null = null;
@@ -190,20 +182,20 @@ export abstract class DistModel implements Model {
   }
 
   /** The distribution of the market's number in a read (a count's model adds the count so far); a string: why there's none. */
-  distOf(b: Built, _m: Market, _now: number, _last?: Tick): Dist | string {
+  distOf(b: Built, _m: Market, _last?: Tick): Dist | string {
     return b.dist;
   }
 
   target(m: Market, now: number, last?: Tick): Target {
     const b = this.current(now);
     if (!b) return none(this.problem ? `source: ${this.problem}` : this.built ? 'source stale for 2 hours' : 'no read yet');
-    const d = this.distOf(b, m, now, last);
+    const d = this.distOf(b, m, last);
     if (typeof d === 'string') return none(d);
     if (b.unsure) return none(b.unsure, d.median());
     const t = this.ladder(m, now, b, d);
     // a big move the next read hasn't confirmed: only what's safe under both reads, the old and the new
     const p = this.held ? this.pending : null;
-    const dp = p ? this.distOf(p, m, now, last) : null;
+    const dp = p ? this.distOf(p, m, last) : null;
     if (!p || !dp || typeof dp === 'string') return t;
     if (p.unsure) return none(p.unsure, d.median());
     const quotes = envelope(t.quotes, this.ladder(m, now, p, dp).quotes);

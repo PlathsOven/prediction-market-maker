@@ -1,8 +1,9 @@
 // Status pages, for the uptime markets. Both pages count downtime the way Atlassian Statuspage documents it:
 // major-outage time plus 0.3 × partial-outage time (degraded performance and maintenance don't count).
 //
-//   Atlassian Statuspage (status.claude.com): /uptime_showcase?components=<id> has the last 90 days, each day's
-//     partial (p) and major (m) outage seconds; /api/v2/components.json has each component's status now.
+//   Atlassian Statuspage (status.claude.com): /uptime/<id>?page=N has three months a page of each day's partial (p)
+//     and major (m) outage seconds, back to the component's start (/uptime_showcase?components=<id> has the last 90
+//     days of the same); /api/v2/components.json has each component's status now.
 //   Instatus (status.polymarket.com): the home page embeds each component's outages over the last 90 days as
 //     exact intervals (inside the Next.js payload: undocumented, so read defensively); /v2/components.json has
 //     each component's status now.
@@ -35,59 +36,33 @@ export function parseAtlassianStatus(json: unknown, component: string): Status {
   return c.status === 'major_outage' ? 'major' : c.status === 'partial_outage' ? 'partial' : 'up';
 }
 
-export async function atlassianDays(base: string, component: string): Promise<OutageDay[]> {
-  return parseShowcase(await getJson(`${base}/uptime_showcase?components=${component}`, 10 * 60_000), component);
-}
-
 const ENTITIES: Record<string, string> = { quot: '"', amp: '&', lt: '<', gt: '>', apos: "'" };
 const unescapeHtml = (s: string): string =>
   s.replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (all, e: string) =>
     e[0] === '#' ? String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : (ENTITIES[e.toLowerCase()] ?? all),
   );
 
-export interface MonthUptime {
-  /** YYYY-MM */
-  month: string;
-  /** The page's own figure, in percent. */
-  uptime: number;
-}
-
 /**
  * One page of a component's uptime history (/uptime/<id>?page=N: three months a page, page 1 the latest, back to
- * the component's start): each day's weighted outage seconds, and each month's published uptime. Days still to
- * come in the current month have no date and are skipped.
+ * the component's start): each day's weighted outage seconds. Days still to come in the current month have no
+ * date and are skipped.
  */
-export function parseUptimePage(html: string): { days: OutageDay[]; months: MonthUptime[] } {
+export function parseUptimePage(html: string): OutageDay[] {
   const raw = html.match(/data-react-props="([^"]*)"/)?.[1];
   if (!raw) throw new Error('no uptime history on the page');
-  const props = JSON.parse(unescapeHtml(raw)) as {
-    months?: { name: string; year: number; uptime_percentage?: number; days?: { date?: string; p?: number; m?: number }[] }[];
-  };
+  const props = JSON.parse(unescapeHtml(raw)) as { months?: { days?: { date?: string; p?: number; m?: number }[] }[] };
   if (!Array.isArray(props.months)) throw new Error('no months in the uptime history');
   const days: OutageDay[] = [];
-  const months: MonthUptime[] = [];
-  for (const mo of props.months) {
-    for (const d of mo.days ?? []) if (d.date) days.push({ day: d.date.slice(0, 10), down: (d.m ?? 0) + PARTIAL_WEIGHT * (d.p ?? 0) });
-    const first = (mo.days ?? []).find((d) => d.date)?.date;
-    if (first && typeof mo.uptime_percentage === 'number') months.push({ month: first.slice(0, 7), uptime: 100 * mo.uptime_percentage });
-  }
-  return { days, months };
+  for (const mo of props.months) for (const d of mo.days ?? []) if (d.date) days.push({ day: d.date.slice(0, 10), down: (d.m ?? 0) + PARTIAL_WEIGHT * (d.p ?? 0) });
+  return days;
 }
 
-/** A component's daily history over the last `pages` pages (three months each), oldest first; months likewise. */
-export async function atlassianHistory(base: string, component: string, pages = 2): Promise<{ days: OutageDay[]; months: MonthUptime[] }> {
+/** A component's daily history over the last `pages` pages (three months each), oldest first. */
+export async function atlassianHistory(base: string, component: string, pages: number): Promise<OutageDay[]> {
   const read = await Promise.all(Array.from({ length: pages }, (_, i) => getText(`${base}/uptime/${component}?page=${i + 1}`, 30 * 60_000)));
   const days = new Map<string, OutageDay>();
-  const months = new Map<string, MonthUptime>();
-  for (const html of read) {
-    const p = parseUptimePage(html);
-    for (const d of p.days) days.set(d.day, d);
-    for (const m of p.months) months.set(m.month, m);
-  }
-  return {
-    days: [...days.values()].sort((a, b) => a.day.localeCompare(b.day)),
-    months: [...months.values()].sort((a, b) => a.month.localeCompare(b.month)),
-  };
+  for (const html of read) for (const d of parseUptimePage(html)) days.set(d.day, d);
+  return [...days.values()].sort((a, b) => a.day.localeCompare(b.day));
 }
 
 /** A page's components now: read at most once a minute, whichever of its markets asks (1, 7 and 30 days share it). */

@@ -15,11 +15,11 @@ export const fredUrl = (series: string, from: string): string => `https://fred.s
 
 const splitCsv = (line: string): string[] => line.split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
 
-/** Treasury's CSV (newest first, dates MM/DD/YYYY) as closes, oldest first. */
-export function parseTreasuryCsv(text: string, column = '10 Yr'): Close[] {
+/** Treasury's CSV (newest first, dates MM/DD/YYYY) as its "10 Yr" closes, oldest first. */
+export function parseTreasuryCsv(text: string): Close[] {
   const [head, ...rows] = text.trim().split(/\r?\n/);
-  const col = splitCsv(head).indexOf(column);
-  if (col < 0) throw new Error(`no "${column}" column`);
+  const col = splitCsv(head).indexOf('10 Yr');
+  if (col < 0) throw new Error('no "10 Yr" column');
   const out: Close[] = [];
   for (const row of rows) {
     const cells = splitCsv(row);

@@ -48,7 +48,10 @@ export function config(env: Record<string, string | undefined>): Config {
   const levels = num(env.LEVELS);
   // a user's account starts with $1,000 paper: $2 a level on every book stays well inside it
   const eventSize = size ?? (house ? 500 : 2);
-  const feed = house && size === undefined && levels === undefined ? undefined : { size: size ?? (house ? undefined : 2), levels };
+  // what a feed book's calibration gives way to, only what's set: a key left unset would blank the calibrated one
+  const feedSize = size ?? (house ? undefined : 2);
+  const feed =
+    feedSize === undefined && levels === undefined ? undefined : { ...(feedSize !== undefined && { size: feedSize }), ...(levels !== undefined && { levels }) };
   return {
     url: (env.RIZON_URL ?? env.SERVER_URL ?? 'https://rizon.markets').trim().replace(/\/$/, ''),
     key,

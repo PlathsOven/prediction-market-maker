@@ -83,6 +83,8 @@ export interface KeyOptions {
   file: string;
   /** The house deployment's bot key: makes and funds the maker account. */
   botKey?: string;
+  /** A callsign for a new account, for a bot that shows who it is on the leaderboard. */
+  name?: string;
   log: (line: string) => void;
 }
 
@@ -109,14 +111,16 @@ export async function resolveKey(o: KeyOptions): Promise<{ key: string; account:
     // the session that made the account makes its API key; from then on the bot only uses the key
     const made = await rest.call<{ key: string }>('POST', '/keys', { name: 'maker', scope: 'trade' }, token);
     if (made.status !== 201) throw new Error(`POST /keys: ${made.status}`);
-    await save(o.file, o.url, { key: made.body.key, id: me.id, name: me.name });
-    o.log(`made the maker account ${me.name}`);
+    if (o.name && (await rest.call('PATCH', '/me', { name: o.name }, token)).status !== 200) o.log(`couldn't take the name ${o.name}`);
+    await save(o.file, o.url, { key: made.body.key, id: me.id, name: o.name ?? me.name });
+    o.log(`made the account ${o.name ?? me.name}`);
     const acct = await rest.call<Account>('GET', '/me', undefined, made.body.key);
     return { key: made.body.key, account: acct.body };
   }
   const made = await rest.call<{ key: string; account: Account }>('POST', '/accounts', { keyName: 'rizon-bots' });
   if (made.status !== 201) throw new Error(`POST /accounts: ${made.status} ${JSON.stringify(made.body)}`);
-  await save(o.file, o.url, { key: made.body.key, id: made.body.account.id, name: made.body.account.name });
-  o.log(`made account ${made.body.account.name} (key saved to ${o.file})`);
+  if (o.name && (await rest.call('PATCH', '/me', { name: o.name }, made.body.key)).status !== 200) o.log(`couldn't take the name ${o.name}`);
+  await save(o.file, o.url, { key: made.body.key, id: made.body.account.id, name: o.name ?? made.body.account.name });
+  o.log(`made account ${o.name ?? made.body.account.name} (key saved to ${o.file})`);
   return made.body;
 }

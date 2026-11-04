@@ -12,30 +12,28 @@ import { hold, strikesOf, none, type Model, type Target, type Tick } from './mod
 export type FeedLadder = (spot: number, sigma: number, horizon: number, g: Grid) => Quote[];
 
 export class FeedModel implements Model {
-  readonly source: string;
   readonly follows = true;
 
   /**
-   * quoteWhenNotLive: keep re-quoting while Rizon's value is simulated or stale. Neither BTC nor Gold does: the
-   * exchange takes no orders while a price is simulated (contracts that expire then are pushed), and a stale index
-   * next to a live price elsewhere is free money for whoever reads the live one. They hold their book instead.
+   * quoteNotLive: keep re-quoting while Rizon's value is simulated or stale (QUOTE_NOT_LIVE, for an exchange that
+   * trades on stand-in prices). Otherwise the book is held: the exchange takes no orders while a price is simulated
+   * (contracts that expire then are pushed), and a stale index next to a live price elsewhere is free money for
+   * whoever reads the live one. maxAgeMs: hold the book once the last price is older than this (the exchange
+   * refuses orders soon after).
    */
-  /** maxAgeMs: hold the book once the last price is older than this (the exchange refuses orders soon after). */
   constructor(
     private readonly ladder: FeedLadder,
-    private readonly quoteWhenNotLive: boolean,
-    name = 'price feed',
+    private readonly quoteNotLive: boolean,
+    readonly source: string,
     private readonly maxAgeMs?: number,
-  ) {
-    this.source = name;
-  }
+  ) {}
 
   target(m: Market, now: number, last?: Tick): Target {
     const spot = last?.price ?? m.spot;
     if (spot === null || spot === undefined) return none('no price yet');
     // not live if either the listing (every 5 s) or the last price says so
     const live = m.live && (last?.live ?? true);
-    if (!live && !this.quoteWhenNotLive) return hold('price not live', spot);
+    if (!live && !this.quoteNotLive) return hold('price not live', spot);
     if (this.maxAgeMs !== undefined && last && now - last.at > this.maxAgeMs) return hold(`no new price for ${Math.round((now - last.at) / 1000)} s`, spot);
     if (m.horizon === null) return none('not a rolling market', spot);
     return { quotes: this.ladder(spot, m.sigma, m.horizon, strikesOf(m, now)), center: spot };

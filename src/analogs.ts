@@ -1,9 +1,9 @@
 // Reading an analog market (a Polymarket or Kalshi event on the same question) as a distribution of our number.
-// The view functions are pure, over events already fetched, so they're tested on recorded responses; read()
-// fetches and views in one step.
-import { type Bucket, type ValueType, bucketDist, bucketSpread, fitBuckets, fitPoints, interval, type LadderPoint, pointDist, pointSpread, thresholdX } from './buckets.ts';
+// The view functions are pure, over events already fetched, so they're tested on recorded responses;
+// readAnalogAndTape() fetches and views in one step.
+import { type Bucket, type FittedPoint, type LadderPoint, type Quoted, type ValueType, bucketDist, bucketSpread, fitBuckets, fitPoints, interval, pointDist, pointSpread, thresholdX } from './buckets.ts';
 import type { Dist } from './dist.ts';
-import { type KsEvent, activeMarkets, ksEvent } from './sources/kalshi.ts';
+import { type KsEvent, type KsMarket, activeMarkets, ksEvent } from './sources/kalshi.ts';
 import { type LabelOptions, type PmEvent, type Range, atLastTrades, parseLabel, pmEvent, tradingMarkets } from './sources/polymarket.ts';
 import { Unreadable } from './models/model.ts';
 
@@ -37,6 +37,11 @@ export interface KalshiSpec {
   weight?: number;
   /** The event counts the other side: our number is mirror − theirs (Democratic seats → Republican: 435 − D). */
   mirror?: number;
+  /**
+   * A spread: each market is one team winning by over x (a ticker ending -DET4 is Detroit by over 3.5), and our number
+   * is this team's margin.
+   */
+  home?: string;
 }
 
 export type AnalogSpec = PolymarketBuckets | PolymarketLadder | KalshiSpec;
@@ -61,6 +66,22 @@ export interface View {
   rows: { label: string; bid: number | null; ask: number | null; p: number }[];
 }
 
+/** A view of buckets fitted inside their spreads: the spread where the mass is, and a row a bucket. */
+export const bucketView = (name: string, dist: Dist, fitted: readonly (Quoted & { p: number; spread: number })[]): View => ({
+  name,
+  dist,
+  spread: bucketSpread(fitted),
+  rows: fitted.map((b) => ({ label: b.label, bid: b.bid, ask: b.ask, p: b.p })),
+});
+
+/** A view of a fitted ladder: the spread where it crosses the middle, and a row a point, at P(X ≤ x). */
+export const pointView = (name: string, dist: Dist, fitted: readonly FittedPoint[]): View => ({
+  name,
+  dist,
+  spread: pointSpread(fitted),
+  rows: fitted.map((p) => ({ label: p.label, bid: p.bid, ask: p.ask, p: p.F })),
+});
+
 export const rangeOfEdges = ([lo, hi]: Edges): Range | null =>
   lo !== null && hi !== null
     ? lo === hi
@@ -72,15 +93,12 @@ export const rangeOfEdges = ([lo, hi]: Edges): Range | null =>
         ? { kind: 'atMost', a: hi }
         : null;
 
-const rangeFor = (label: string, edges: Readonly<Record<string, Edges>> | undefined, labels: LabelOptions | undefined): Range | null =>
-  edges?.[label] ? rangeOfEdges(edges[label]) : parseLabel(label, labels);
-
 /** An event's trading buckets, each with its range; throws Unreadable if any label can't be placed. */
 function pmBuckets(ev: PmEvent, edges: Readonly<Record<string, Edges>> | undefined, labels: LabelOptions | undefined, drop: readonly RegExp[] = []): Bucket[] {
   return tradingMarkets(ev)
     .filter((m) => !drop.some((re) => re.test(m.label)))
     .map((m) => {
-      const range = rangeFor(m.label, edges, labels);
+      const range = edges?.[m.label] ? rangeOfEdges(edges[m.label]) : parseLabel(m.label, labels);
       if (!range) throw new Unreadable(`can't read the bucket "${m.label}" in ${ev.slug}`);
       return { label: m.label, bid: m.bid, ask: m.ask, last: m.last, range };
     });
@@ -109,22 +127,17 @@ export function viewPmBuckets(ev: PmEvent, spec: PolymarketBuckets, o: AnalogOpt
       }
     }
   }
-  return {
-    name: `Polymarket ${ev.slug}`,
-    dist: bucketDist(parts, o.value, o.support),
-    spread: bucketSpread(fitted),
-    rows: fitted.map((b) => ({ label: b.label, bid: b.bid, ask: b.ask, p: b.p })),
-  };
+  return bucketView(`Polymarket ${ev.slug}`, bucketDist(parts, o.value, o.support), fitted);
 }
 
 /** A Polymarket ladder of thresholds as a distribution. */
 export function viewPmLadder(ev: PmEvent, spec: PolymarketLadder, o: AnalogOptions): View {
-  const points: LadderPoint[] = tradingMarkets(ev).flatMap((m) => {
+  const points: LadderPoint[] = tradingMarkets(ev).map((m) => {
     const r = parseLabel(m.label, spec.labels);
     if (!r || r.kind !== 'exact') throw new Unreadable(`can't read the threshold "${m.label}" in ${ev.slug}`);
     // "above x" (survival) or "x or under" (cumulative); on a continuous number the two ends of x are the same
     const t = thresholdX({ kind: spec.shape === 'survival' ? 'above' : 'atMost', a: r.a }, o.value)!;
-    return [{ label: m.label, bid: m.bid, ask: m.ask, last: m.last, ...t }];
+    return { label: m.label, bid: m.bid, ask: m.ask, last: m.last, ...t };
   });
   let fitted = fitPoints(points);
   if (fitted.length < 2) throw new Unreadable(`too few readable thresholds in ${ev.slug}`);
@@ -133,12 +146,7 @@ export function viewPmLadder(ev: PmEvent, spec: PolymarketLadder, o: AnalogOptio
     const f0 = fitted[0].F;
     fitted = fitted.map((p) => ({ ...p, F: f0 < 1 ? (p.F - f0) / (1 - f0) : p.F }));
   }
-  return {
-    name: `Polymarket ${ev.slug}`,
-    dist: pointDist(fitted, o.value, o.support),
-    spread: pointSpread(fitted),
-    rows: fitted.map((p) => ({ label: p.label, bid: p.bid, ask: p.ask, p: p.F })),
-  };
+  return pointView(`Polymarket ${ev.slug}`, pointDist(fitted, o.value, o.support), fitted);
 }
 
 /** Kalshi's ranges for our number: mirrored (mirror − x) when the event counts the other side. */
@@ -159,20 +167,25 @@ function mirrorRange(r: Range, m: number): Range {
   }
 }
 
+/** A spread's market as the home team's margin: the home team by over x is above +x; the away team by over x is below −x. */
+function marginRange(m: KsMarket, home: string): Range | null {
+  const team = /-([A-Z]+)\d+$/.exec(m.ticker)?.[1];
+  if (m.range?.kind !== 'above' || !team) return null;
+  return team === home ? m.range : { kind: 'below', a: -m.range.a };
+}
+
 /** A Kalshi event as a distribution: buckets when exactly one market wins, else a ladder of thresholds. */
 export function viewKalshi(ev: KsEvent, spec: KalshiSpec, o: AnalogOptions): View {
   const ms = activeMarkets(ev).filter((m) => m.range);
-  const ranged = ms.map((m) => ({ ...m, range: spec.mirror === undefined ? m.range! : mirrorRange(m.range!, spec.mirror) }));
+  const ranged = ms.flatMap((m) => {
+    const range = spec.home ? marginRange(m, spec.home) : spec.mirror === undefined ? m.range! : mirrorRange(m.range!, spec.mirror);
+    return range ? [{ ...m, range }] : [];
+  });
   const name = `Kalshi ${ev.ticker}${spec.mirror !== undefined ? ` (${spec.mirror} − x)` : ''}`;
   if (ev.exclusive) {
     const fitted = fitBuckets(ranged.map((m) => ({ label: m.label, bid: m.bid, ask: m.ask, last: m.last, range: m.range })));
     if (!fitted.length) throw new Unreadable(`no active markets in ${ev.ticker}`);
-    return {
-      name,
-      dist: bucketDist(fitted, o.value, o.support),
-      spread: bucketSpread(fitted),
-      rows: fitted.map((b) => ({ label: b.label, bid: b.bid, ask: b.ask, p: b.p })),
-    };
+    return bucketView(name, bucketDist(fitted, o.value, o.support), fitted);
   }
   const points: LadderPoint[] = ranged.flatMap((m) => {
     const t = thresholdX(m.range, o.value);
@@ -180,12 +193,7 @@ export function viewKalshi(ev: KsEvent, spec: KalshiSpec, o: AnalogOptions): Vie
   });
   const fitted = fitPoints(points);
   if (fitted.length < 2) throw new Unreadable(`too few quoted thresholds in ${ev.ticker} (spreads over 10¢)`);
-  return {
-    name,
-    dist: pointDist(fitted, o.value, o.support),
-    spread: pointSpread(fitted),
-    rows: fitted.map((p) => ({ label: p.label, bid: p.bid, ask: p.ask, p: p.F })),
-  };
+  return pointView(name, pointDist(fitted, o.value, o.support), fitted);
 }
 
 /** A Kalshi event at its last trades (bid and ask both), the markets that never traded left out: a check on the quotes. */
@@ -193,11 +201,6 @@ export const ksAtLastTrades = (ev: KsEvent): KsEvent => ({
   ...ev,
   markets: ev.markets.flatMap((m) => (m.last === null || m.last <= 0 ? [] : [{ ...m, bid: m.last, ask: m.last }])),
 });
-
-/** Fetches one analog and views it. */
-export async function readAnalog(spec: AnalogSpec, o: AnalogOptions): Promise<View> {
-  return (await readAnalogAndTape(spec, o)).view;
-}
 
 /** Fetches one analog and views it at its quotes, and (when it reads) at its last trades: the same request, two views. */
 export async function readAnalogAndTape(spec: AnalogSpec, o: AnalogOptions): Promise<{ view: View; tape: View | null }> {

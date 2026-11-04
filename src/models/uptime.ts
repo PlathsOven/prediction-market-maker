@@ -86,8 +86,8 @@ export function uptimeDist(samples: readonly { u: number; w?: number }[]): Dist 
 export async function readPage(spec: UptimeSpec, now: number): Promise<{ days: OutageDay[]; status: Status }> {
   const { page, base, component } = spec;
   if (page === 'atlassian') {
-    const [history, status] = await Promise.all([atlassianHistory(base, component, HISTORY_PAGES), atlassianStatus(base, component)]);
-    return { days: history.days, status };
+    const [days, status] = await Promise.all([atlassianHistory(base, component, HISTORY_PAGES), atlassianStatus(base, component)]);
+    return { days, status };
   }
   const [home, status] = await Promise.all([instatusHome(base, component), instatusStatus(base, component)]);
   return { days: outageDays(home.outages, home.from, Math.min(home.to, now)), status };

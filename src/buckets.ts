@@ -161,18 +161,18 @@ export interface FittedPoint extends LadderPoint {
 }
 
 /**
- * The CDF read off a ladder, as P(X ≤ x): each point's mid while its spread is at most maxSpread; up to twice that,
- * its last trade if that's inside the quotes; wider ones are dropped. Then it's made non-decreasing in x (pool
- * adjacent violators, tighter quotes weighing more).
+ * The CDF read off a ladder, as P(X ≤ x): each point's mid while its spread is at most 10¢; up to 20¢, its last
+ * trade if that's inside the quotes; wider ones are dropped. Then it's made non-decreasing in x (pool adjacent
+ * violators, tighter quotes weighing more).
  */
-export function fitPoints(ps: readonly LadderPoint[], maxSpread = 0.1): FittedPoint[] {
+export function fitPoints(ps: readonly LadderPoint[]): FittedPoint[] {
   const kept = ps
     .flatMap((p) => {
       if (p.bid === null && p.ask === null) return [];
       const s = sideOf(p);
       const spread = s.ask - s.bid;
       const lastInside = p.last !== null && p.last >= s.bid && p.last <= s.ask;
-      const mid = spread <= maxSpread ? (s.bid + s.ask) / 2 : spread <= 2 * maxSpread && lastInside ? p.last! : null;
+      const mid = spread <= 0.1 ? (s.bid + s.ask) / 2 : spread <= 0.2 && lastInside ? p.last! : null;
       return mid === null ? [] : [{ ...p, spread, mid }];
     })
     .sort((a, b) => a.x - b.x);

@@ -33,7 +33,7 @@ for (const { market, fromExchange } of toRead) {
   const b = model.current(now);
   const unit = market.unit;
   console.log(`\n${market.id} (${unit}) · ${fromExchange ? 'listed on the exchange' : 'not listed yet: grid from src/markets.ts'}`);
-  const d = b ? model.distOf(b, market, now) : null;
+  const d = b ? model.distOf(b, market) : null;
   if (!b || d === null || typeof d === 'string') {
     const why = (typeof d === 'string' ? d : null) ?? model.problem ?? 'no read';
     console.log(`  not quoting: ${why}`);

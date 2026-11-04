@@ -127,7 +127,7 @@ describe('gold: quotes off a fresh price, held while there is none', () => {
   const model = new FeedModel((s, sig, h, g) => sigmaLadder(s, sig, h, g, GOLD_SIGMA), false, 'gold', 4_000);
 
   test('quotes around the last price while it is fresh; 4 seconds on (the exchange refuses orders at 5) the book is held', () => {
-    const tick = { t: 0, price: 4028.72, live: true, at: 1_000 };
+    const tick = { price: 4028.72, live: true, at: 1_000 };
     expect(model.target(gold, 3_000, tick).quotes.length).toBe(20);
     const t = model.target(gold, 5_001, tick);
     expect(t.hold).toBe(true);
@@ -135,7 +135,7 @@ describe('gold: quotes off a fresh price, held while there is none', () => {
   });
 
   test('a listing that says not live wins over a last price that said live', () => {
-    const tick = { t: 0, price: 4028.72, live: true, at: 1_000 };
+    const tick = { price: 4028.72, live: true, at: 1_000 };
     expect(model.target({ ...gold, live: false }, 1_500, tick).hold).toBe(true);
   });
 });
@@ -143,17 +143,15 @@ describe('gold: quotes off a fresh price, held while there is none', () => {
 describe('uptime over 1, 7 and 30 whole days', () => {
   const showcase = async () => parseShowcase(JSON.parse(await Bun.file(`${F}/statuspage-claude-showcase.json`).text()), 'rwppv331jlwc');
 
-  test('the history pages: each day\'s outage seconds and each month\'s published uptime; days to come are skipped', async () => {
+  test('the history pages: each day\'s outage seconds; days to come are skipped', async () => {
     const p1 = parseUptimePage(await Bun.file(`${F}/statuspage-claude-uptime-page1.html`).text());
     const p2 = parseUptimePage(await Bun.file(`${F}/statuspage-claude-uptime-page2.html`).text());
-    expect(p1.days.at(-1)!.day).toBe('2026-10-29');
-    expect(p1.days.find((d) => d.day === '2026-10-27')!.down).toBeCloseTo(0.3 * 3884, 6);
-    expect(p1.months.map((m) => m.month)).toEqual(['2026-08', '2026-09', '2026-10']);
-    expect(p1.months[1].uptime).toBeCloseTo(99.7, 2);
-    expect(p2.days[0].day).toBe('2026-05-01');
+    expect(p1.at(-1)!.day).toBe('2026-10-29');
+    expect(p1.find((d) => d.day === '2026-10-27')!.down).toBeCloseTo(0.3 * 3884, 6);
+    expect(p2[0].day).toBe('2026-05-01');
     // the pages agree with the 90-day showcase where they overlap
     const show = await showcase();
-    const byDay = new Map(p1.days.map((d) => [d.day, d.down]));
+    const byDay = new Map(p1.map((d) => [d.day, d.down]));
     for (const d of show.filter((x) => x.day < '2026-10-29')) expect(byDay.get(d.day)).toBeCloseTo(d.down, 6);
   });
 

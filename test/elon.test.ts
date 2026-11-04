@@ -129,7 +129,7 @@ describe('the shared history', () => {
 describe('the ELON books', () => {
   test('ELON-1d at 11,500 posts: bids from 11,544.5 down, asks from 11,548.5 up, on half posts', async () => {
     const m = await model(1);
-    const t = m.target(elon(86_400), NOW, { t: NOW, price: 11_500, live: true, at: NOW });
+    const t = m.target(elon(86_400), NOW, { price: 11_500, live: true, at: NOW });
     expect(touch(t.quotes)).toEqual({ bid: 11_544.5, ask: 11_548.5 });
     expect(t.quotes.every((q) => q.strike % 1 === 0.5)).toBe(true);
     expect(t.center).toBeCloseTo(11_546.5, 0);
@@ -141,28 +141,28 @@ describe('the ELON books', () => {
 
   test('each post moves the book a strike', async () => {
     const m = await model(1);
-    const a = touch(m.target(elon(86_400), NOW, { t: NOW, price: 11_500, live: true, at: NOW }).quotes);
-    const b = touch(m.target(elon(86_400), NOW, { t: NOW, price: 11_501, live: true, at: NOW }).quotes);
+    const a = touch(m.target(elon(86_400), NOW, { price: 11_500, live: true, at: NOW }).quotes);
+    const b = touch(m.target(elon(86_400), NOW, { price: 11_501, live: true, at: NOW }).quotes);
     expect(b).toEqual({ bid: a.bid + 1, ask: a.ask + 1 });
   });
 
   test('ELON-7d: about 325 to come, a 10-post spread', async () => {
     const m = await model(7);
-    const t = m.target(elon(604_800), NOW, { t: NOW, price: 11_500, live: true, at: NOW });
+    const t = m.target(elon(604_800), NOW, { price: 11_500, live: true, at: NOW });
     expect(touch(t.quotes)).toEqual({ bid: 11_820.5, ask: 11_830.5 });
   });
 
   test('Polymarket far from it: the forecast moves halfway there (in ratio), and the book widens while they disagree', async () => {
     const own = forecast(times, FROM, NOW, 7 * DAY).dist.median();
     const m = await model(7, async () => ({ name: 'Polymarket elon-musk-of-tweets-october-30-november-6-2026', median: 280, fit: 1 }));
-    const t = m.target(elon(604_800), NOW, { t: NOW, price: 11_500, live: true, at: NOW });
+    const t = m.target(elon(604_800), NOW, { price: 11_500, live: true, at: NOW });
     expect(t.center - 11_500).toBeCloseTo(own * Math.sqrt(281 / (own + 1)), 6);
     expect(t.center - 11_500).toBeCloseTo(302, 0);
     expect(t.note).toContain('says 280');
     // the same view from a window that matches the horizon half as well, or from a thin book, moves it half as far
     for (const view of [{ fit: 0.5 }, { fit: 1, thin: true }]) {
       const half = await model(7, async () => ({ name: 'Polymarket', median: 280, ...view }));
-      expect(half.target(elon(604_800), NOW, { t: NOW, price: 11_500, live: true, at: NOW }).center - 11_500).toBeCloseTo(own * (281 / (own + 1)) ** 0.25, 6);
+      expect(half.target(elon(604_800), NOW, { price: 11_500, live: true, at: NOW }).center - 11_500).toBeCloseTo(own * (281 / (own + 1)) ** 0.25, 6);
     }
   });
 
@@ -170,14 +170,14 @@ describe('the ELON books', () => {
     const m = await model(1, async () => {
       throw new Error('no open Polymarket window to check against');
     });
-    const t = m.target(elon(86_400), NOW, { t: NOW, price: 11_500, live: true, at: NOW });
+    const t = m.target(elon(86_400), NOW, { price: 11_500, live: true, at: NOW });
     expect(touch(t.quotes)).toEqual({ bid: 11_544.5, ask: 11_548.5 });
     expect(m.current(NOW)!.reports[0].error).toContain('no open Polymarket window');
   });
 
   test('Rizon\'s counter not live: the book is held as it is; with no count yet, nothing', async () => {
     const m = await model(1);
-    const held = m.target(elon(86_400), NOW, { t: NOW, price: 11_500, live: false, at: NOW });
+    const held = m.target(elon(86_400), NOW, { price: 11_500, live: false, at: NOW });
     expect(held.hold).toBe(true);
     expect(held.reason).toContain("counter isn't live");
     expect(m.target(elon(86_400, null), NOW).reason).toBe('no count yet');
@@ -185,7 +185,7 @@ describe('the ELON books', () => {
     const log = new PostLog('elonmusk', 90, async (from) => posts.filter((p) => p.at >= from));
     const sim = new ElonModel(1, log, sizing, async () => ({ name: 'Polymarket', median: 46.5, fit: 1 }), true);
     await sim.refresh(NOW);
-    expect(sim.target(elon(86_400), NOW, { t: NOW, price: 11_500, live: false, at: NOW }).quotes.length).toBe(16);
+    expect(sim.target(elon(86_400), NOW, { price: 11_500, live: false, at: NOW }).quotes.length).toBe(16);
   });
 
   test('each horizon has its own model and guards (on the posts to come)', () => {

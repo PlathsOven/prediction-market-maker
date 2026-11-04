@@ -97,7 +97,7 @@ A market's fair value is its distribution's median: the point the ladder centres
 | Disagreement | A source, the same source at its last trades (its tape), or a related event read as a check sits more than half that scale away | The quotes widen by 3 points (m = 7%), with the reason in the log |
 | Staleness | No good read for 10 minutes (requests failing) | The last read is quoted 8 points wider; after 2 hours the book comes down. A source that answers with something unreadable (a format it doesn't know, an event that has closed) takes it down at once |
 
-On the feeds, Gold's book is held 4 seconds after its last index price (the exchange takes no gold orders after 5). Markets that open or close arrive on the exchange's `markets` channel: the bot quotes a new one as it appears and takes down the quotes of one that closes, or that it has no model for (the weekly ELON-W market, delisted on 2026-10-30), at once.
+Markets that open or close arrive on the exchange's `markets` channel: the bot quotes a new one as it appears and takes down the quotes of one that closes, or that it has no model for, at once.
 
 `bun src/audit.ts` prints every market's fair value beside an independent reference for the same number: the other venue alone, a separate event on the same question, the venue's last trades, a perpetual future, the status page's published uptime. `--latency 30` also watches the feed books for 30 seconds and times every episode in which a book's best ask stands at or under spot, or its best bid at or over it: a book behind its price. The runner logs each market's re-quote time (from a new target to a book that matches it) every 5 minutes.
 
@@ -109,20 +109,20 @@ Numbers below were read live on 2026-10-29 at about 09:40 UTC (`bun src/read.ts`
 
 Markets: `BTC-15s`, `BTC-1m`, `BTC-5m`, `GOLD-15s`, `GOLD-1m`, `GOLD-5m`. Source: Rizon's own `price:<underlying>` channel (Coinbase and Kraken for BTC, the PAXG index for gold), and each market's `sigma`, its realised one-sigma move over the horizon. There's nothing to infer. The number at expiry is roughly normal around spot with that sigma, and the bot quotes around spot.
 
-**BTC** keeps Rizon's original ladder, in strikes:
+**BTC** is quoted in strikes:
 
-- **Width.** The best ask minus the best bid, in strikes. It's 2 at 15 s and grows with √horizon (4 at 1 m, 9 at 5 m). It widens up to 3× while realised volatility runs above 45% a year. Near $80,000 that's a touch about ±0.04σ from spot.
+- **Width.** The best ask minus the best bid, in strikes. It's 1 at 15 s and grows with √horizon (2 at 1 m, 4 at 5 m). It widens up to 3× while realised volatility runs above 45% a year. Near $80,000 that's a touch about ±0.02σ from spot.
 - **Outer levels.** Nine more a side, on multiples of round(6% of sigma) strikes, all one size.
 
-Example, `BTC-15s`: spot $80,077.30 and sigma $23.76 give realised volatility of 43% a year, inside the calm 45%, so the width is 2 strikes. The bot quotes bid $80,076 and ask $80,078, with the outer levels every round(0.06 × 23.76) = $1, out to $80,067 and $80,087. A taker wins about 48% on either side (47.8% selling into the bid, $1.30 under spot; 48.8% buying the ask, $0.70 over it).
+Example, `BTC-15s`: spot $80,077.30 and sigma $23.76 give realised volatility of 43% a year, inside the calm 45%, so the width is 1 strike. The bot quotes bid $80,077 and ask $80,078, with the outer levels every round(0.06 × 23.76) = $1, out to $80,068 and $80,087. A taker wins about 49% on either side (49.5% selling into the bid, $0.30 under spot; 48.8% buying the ask, $0.70 over it).
 
-**Gold** gets the same ladder in sigmas. Its $0.10 strikes are a fifth of its 15-second sigma (about $0.50), where BTC's $1 strikes are a twenty-fifth of its own, so a width in strikes can't carry over, but the distances in sigma can:
+**Gold** gets a ladder in sigmas. Its $0.10 strikes are a fifth of its 15-second sigma (about $0.50), where BTC's $1 strikes are a twenty-fifth of its own, so a width in strikes wouldn't mean much:
 
 - **Touch.** The best bid is the highest strike at least 0.04σ under spot, the best ask the lowest at least 0.04σ over it.
 - **Outer levels.** On multiples of round(6% of sigma) strikes, at least one strike apart.
 - **Calm floor.** Sigma is never taken under 12% a year, so a quiet spell can't close the touch.
 
-That is as close to BTC as gold's grid allows. At 15 s the touch is one or two strikes wide, depending on where spot sits in its strike. At 5 m it's BTC's to within a point.
+At 15 s the touch is one or two strikes wide, depending on where spot sits in its strike.
 
 Examples:
 
@@ -202,7 +202,7 @@ Example: the latest close was 5.05% (Oct 28) and the window had no close yet. "H
 `ELON-1d`, `ELON-7d`: Elon Musk's posts on X since 2026-01-01 00:00 UTC as Polymarket's XTracker counts them (its running total less 2,618), at a contract's expiry, a day or a week after its fill. Strikes sit on half posts. The number is the count now (Rizon's `price:ELON-POSTS`; the book moves with every post) plus X, the posts over the horizon:
 
 - **Rate.** Posts a day over the last 28 days, in 24-hour windows back from now, each day's weight halving every 7 days back.
-- **Spread.** From XTracker's post list: 90 days, by when each post was counted (read once, about 1.5 MB, then the last 3 days every 10 minutes). For each past horizon starting every 6 hours, the ratio (posts it held + 1) / (what the rate said at its start + 1). Ratios weigh half as much every 45 days back, and are centred on their median, so a past trend isn't carried forward. Each gives one sample of X, (rate × horizon + 1) × ratio − 1, spread over ±√(3x)/2 so the ladder steps smoothly.
+- **Spread.** From XTracker's post list: 90 days, by when each post was counted (all of it every 6 hours, about 1.5 MB, and the last 3 days every 10 minutes in between). For each past horizon starting every 6 hours, the ratio (posts it held + 1) / (what the rate said at its start + 1). Ratios weigh half as much every 45 days back, and are centred on their median, so a past trend isn't carried forward. Each gives one sample of X, (rate × horizon + 1) × ratio − 1, spread over ±√(3x)/2 so the ladder steps smoothly.
 - **Polymarket.** Its open Elon window whose time left best matches the horizon (the week, a 2-day window, the month): the posts its buckets expect over that time, less the count so far, scaled to the horizon. The forecast moves toward it, halfway in ratio when the window's time left equals the horizon, less as they differ, and half as far again when the window's book is thin (over 5¢ wide where its mass is). While the two sit more than half the market's scale apart (5 posts on a day, 25 on a week), the quotes widen.
 
 Over the 40 days to Oct 29 (161 starts, every 6 hours), on the 1-day horizon:
@@ -252,9 +252,22 @@ Read on 2026-10-29:
 
 The 1-day books and POLY-UP-7d are one-sided. CLAUDE-UP-7d, CLAUDE-UP-30d and POLY-UP-30d are quoted wider (m = 9%), because their latest window disagrees with the history.
 
+### NFL games: Kalshi's over/under and spread ladders
+
+Each game is two books: the total (`NFL-CHI-DET-TOTAL`) and the home team's margin (`NFL-CHI-DET-SPREAD`). Kalshi's `KXNFLTOTAL` is a ladder of "over x" markets, read like any threshold ladder. Its `KXNFLSPREAD` is two ladders, one for each team winning by over x: the home team's reads as P(margin > x), the away team's as P(margin < −x), so one curve runs through both. Kalshi lists a game about a week out, so until then, and only until kickoff, the book quotes a written normal prior, wider. The best quotes sit on the half-points either side of the median (`margin: 0.015`): a book one point wide costs a taker about 3¢ per $1, against 4.5¢ for a sportsbook's -110.
+
 ### Markets with no analog: priors
 
 A market with no usable source can use a written distribution: `{ model: 'prior', knots: [[x, P(X ≤ x)], …], why }` in `src/markets.ts`. It's quoted 3 points wider than the default. **No market uses one today:** every market above reads a live source.
+
+## Two more bots
+
+Neither makes markets. They take, through the same public API.
+
+| Bot | Run it | What it does |
+|---|---|---|
+| `SHARP-BOT` | `bun src/sharp.ts` | Takes any Bitcoin or gold quote a price move has left stale, when it expects at least 6¢ per $1 (`SHARP_EDGE`). It's why a slow maker loses money on Rizon, as it would anywhere |
+| `COINFLIP-BOT`, `MOMENTUM-BOT`, `REVERSAL-BOT` | `bun src/record.ts` | $100 a minute on `BTC-1m`, on a coin flip, with the last minute's move, and against it. [rizon.markets/bots](https://rizon.markets/bots) shows what each has made, the losers too |
 
 ## Add a market
 
@@ -272,6 +285,7 @@ For a new kind of number, write a model: a class with `target(market, now)` that
 |---|---|
 | `src/main.ts` | The runner's entry: settings, the account key, SIGTERM |
 | `src/read.ts` | The live read, with no orders |
+| `src/sharp.ts`, `src/record.ts` | The taker that picks off stale quotes, and the public record's rules |
 | `src/audit.ts` | Every fair value beside an independent reference, and (`--latency`) how fast the feed books follow their price |
 | `src/listing.ts` | The markets the read and audit commands look at (the exchange's, else the market table's) |
 | `src/runner.ts` | Lists markets (and follows the `markets` channel), makes models, keeps the WebSocket, re-quotes in batches within the order budget, caps net positions, logs re-quote times |
@@ -285,7 +299,7 @@ For a new kind of number, write a model: a class with `target(market, now)` that
 | `src/sources/` | Polymarket (Gamma), Kalshi, Treasury and FRED, XTracker, Statuspage and Instatus |
 | `test/` | `bun test`: the maths, every reader on recorded responses (`test/fixtures/`, 2026-10-29 and 30), and the runner against a stand-in exchange |
 
-Every source is public and keyless. Requests to each host go one at a time with a short gap and a `rizon-bots` User-Agent. Polymarket's Gamma API returns each event's best bid and ask straight from its CLOB, so one request per event per poll is enough.
+Every source is public and keyless. Requests to each host start at least 250 ms apart, with a `rizon-bots` User-Agent. Polymarket's Gamma API returns each event's best bid and ask straight from its CLOB, so one request per event per poll is enough.
 
 ## FAQ
 

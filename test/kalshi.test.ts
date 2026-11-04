@@ -1,4 +1,4 @@
-// The Kalshi readers on responses recorded from its public API on 2026-10-29 at about 09:00 UTC.
+// The Kalshi readers on responses recorded from its public API (on 2026-10-29 at about 09:00 UTC, unless a test says otherwise).
 import { describe, expect, test } from 'bun:test';
 import { viewKalshi } from '../src/analogs.ts';
 import { CATALOG } from '../src/markets.ts';
@@ -28,6 +28,25 @@ describe('Kalshi', () => {
     const above0 = ev.markets.find((m) => m.ticker === 'KXFED-27DEC-T0.00')!;
     expect(above0.ask).toBeNull();
     expect(above0.bid).toBe(0.64);
+  });
+
+  // recorded 2026-11-04: Detroit at Miami, Nov 8
+  test('an NFL total reads its over/under ladder: the median sits where the over crosses 50¢', async () => {
+    const v = viewKalshi(await fixture('nfl-total'), { venue: 'kalshi', event: 'KXNFLTOTAL-26NOV08DETMIA' }, options('NFL-CHI-DET-TOTAL'));
+    expect(v.dist.median()).toBeGreaterThan(49.5);
+    expect(v.dist.median()).toBeLessThan(50.5);
+    expect(v.dist.below(45.5)).toBeCloseTo(1 - 0.645, 2);
+  });
+
+  test('an NFL spread reads both teams’ ladders as the home team’s margin', async () => {
+    const v = viewKalshi(await fixture('nfl-spread'), { venue: 'kalshi', event: 'KXNFLSPREAD-26NOV08DETMIA', home: 'DET' }, options('NFL-CHI-DET-SPREAD'));
+    // Detroit by over 6.5 was 54.5¢, by over 7.5 45.5¢
+    expect(v.dist.median()).toBeCloseTo(7, 0);
+    // Miami by over 3.5 was 14.5¢: the margin below −3.5
+    expect(v.dist.below(-3.5)).toBeCloseTo(0.145, 2);
+    // read from the other team's side, it's the same game turned over
+    const other = viewKalshi(await fixture('nfl-spread'), { venue: 'kalshi', event: 'KXNFLSPREAD-26NOV08DETMIA', home: 'MIA' }, options('NFL-CHI-DET-SPREAD'));
+    expect(other.dist.median()).toBeCloseTo(-7, 0);
   });
 
   test('Republican House seats ≈ 196, and Democratic seats mirrored (435 − D) agree', async () => {

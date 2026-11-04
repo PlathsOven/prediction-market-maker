@@ -27,13 +27,14 @@ export interface MaxYieldOptions {
 /** A 10-year yield's typical daily move, in points, for when no threshold is readable. */
 const DAILY_MOVE = 0.07;
 
-function businessDaysLeft(now: number, to: string): number {
+/** Weekdays from tomorrow through `to` (YYYY-MM-DD). */
+export function businessDaysLeft(now: number, to: string): number {
   let n = 0;
   for (let t = now + 86_400_000; new Date(t).toISOString().slice(0, 10) <= to; t += 86_400_000) {
     const day = new Date(t).getUTCDay();
     if (day !== 0 && day !== 6) n++;
   }
-  return Math.max(1, n);
+  return n;
 }
 
 export function viewMaxYield(ev: PmEvent, closes: readonly Close[], o: MaxYieldOptions): View & { note: string; thin: boolean } {
@@ -43,16 +44,16 @@ export function viewMaxYield(ev: PmEvent, closes: readonly Close[], o: MaxYieldO
   const window = closes.filter((c) => c.day >= o.from && c.day <= o.to);
   const floor = window.length ? Math.max(...window.map((c) => c.value)) : null;
   const anchor = Math.max(x0, floor ?? x0);
-  const points: LadderPoint[] = tradingMarkets(ev).flatMap((m) => {
+  const points: LadderPoint[] = tradingMarkets(ev).map((m) => {
     const r = parseLabel(m.label);
     if (!r || r.kind !== 'exact') throw new Unreadable(`can't read the threshold "${m.label}" in ${ev.slug}`);
     // "hit x": M ≥ x, a survival point (continuous, so the edge doesn't matter)
-    return [{ label: m.label, bid: m.bid, ask: m.ask, last: m.last, x: r.a, survival: true }];
+    return { label: m.label, bid: m.bid, ask: m.ask, last: m.last, x: r.a, survival: true };
   });
   const fitted = fitPoints(points).filter((p) => p.x > anchor + 1e-9);
   const first = fitted[0];
   const s1 = first ? 1 - first.F : null;
-  const fallback = DAILY_MOVE * Math.sqrt(businessDaysLeft(o.now, o.to));
+  const fallback = DAILY_MOVE * Math.sqrt(Math.max(1, businessDaysLeft(o.now, o.to)));
   const s = first && s1! > 0 && s1! < 1 && first.x > x0 ? (first.x - x0) / normInv(1 - s1! / 2) : fallback;
   const reach = (x: number) => (x <= x0 ? 1 : Math.min(1, 2 * (1 - normCdf((x - x0) / s))));
   const top = first ? first.x : Math.min(o.cap, anchor + 4 * s);

@@ -29,3 +29,10 @@ test('a user key quotes $2 a level everywhere; the house (BOT_KEY) its full size
   expect(house.sizing.ladder.sizes).toEqual([500]);
   expect(house.url).toBe('http://localhost:8080');
 });
+
+test("a feed book's calibration gives way only to what's set: unset LEVELS or SIZE keeps the calibrated one", () => {
+  expect(config({ RIZON_KEY: 'rz_x' }).feed).toEqual({ size: 2 });
+  expect(config({ RIZON_KEY: 'rz_x', LEVELS: '4' }).feed).toEqual({ size: 2, levels: 4 });
+  expect(config({ BOT_KEY: 'k', LEVELS: '5' }).feed).toEqual({ levels: 5 });
+  expect(config({ BOT_KEY: 'k', SIZE: '50' }).feed).toEqual({ size: 50 });
+});

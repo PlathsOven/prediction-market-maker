@@ -117,7 +117,7 @@ test('quotes BTC as the old maker did, re-quotes only what moves, skips what it 
   expect(book.every((o) => o.market === 'BTC-15s' && o.size === 1_000)).toBe(true);
   const bestBid = Math.max(...book.filter((o) => o.side === 'up').map((o) => o.strike!));
   const bestAsk = Math.min(...book.filter((o) => o.side === 'down').map((o) => o.strike!));
-  expect([bestBid, bestAsk]).toEqual([99_999, 100_001]);
+  expect([bestBid, bestAsk]).toEqual([100_000, 100_001]);
   // nothing on a halted market, or one with no model
   expect(lines.some((l) => l.includes('XYZ-2026: no model'))).toBe(true);
   expect(lines.some((l) => l.includes('BTC-1m: not quoting: market halted'))).toBe(true);
@@ -232,7 +232,7 @@ test('a feed book is held while its price is down (nothing canceled, nothing pla
   // back, $50 up: re-quoted around the new price
   socket!.send(JSON.stringify({ type: 'price', data: { underlying: 'BTC-USD', t: Date.now(), price: 100_050.4, live: true } }));
   expect(await until(() => batches.length > before)).toBe(true);
-  expect(await until(() => [...orders.values()].some((o) => o.side === 'up' && o.strike === 100_049))).toBe(true);
+  expect(await until(() => [...orders.values()].some((o) => o.side === 'up' && o.strike === 100_050))).toBe(true);
   await runner.stop();
 });
 
@@ -256,8 +256,9 @@ test('a feed book keeps its sigma until the listing\'s moves 10%: a wobble acros
   socket!.send(JSON.stringify({ type: 'markets', data: markets }));
   await Bun.sleep(400);
   expect(batches.length).toBe(before);
-  // a real change (over 10%) does move the ladder
-  markets = [market({ id: 'BTC-15s', sigma: 40 })];
+  // a real change (over 10%) that widens the touch past what the book tolerates does move the ladder: at sigma
+  // 48 the touch is 2 strikes, so the best bid steps a strike away, and a book that sigma leaves no slack nearer
+  markets = [market({ id: 'BTC-15s', sigma: 48 })];
   socket!.send(JSON.stringify({ type: 'markets', data: markets }));
   expect(await until(() => batches.length > before, 2_000)).toBe(true);
   await runner.stop();

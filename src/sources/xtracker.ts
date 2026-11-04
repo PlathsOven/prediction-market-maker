@@ -7,7 +7,6 @@ export const XTRACKER = 'https://xtracker.polymarket.com/api';
 
 export interface Tracking {
   id: string;
-  title: string;
   start: number;
   end: number;
   /** The Polymarket event's slug, from the tracking's marketLink. */
@@ -22,7 +21,7 @@ export function parseTrackings(json: unknown): Tracking[] {
     const end = Date.parse(String(t.endDate));
     if (!Number.isFinite(start) || !Number.isFinite(end)) return [];
     const link = typeof t.marketLink === 'string' ? t.marketLink : '';
-    return [{ id: String(t.id), title: String(t.title ?? ''), start, end, slug: link.match(/\/event\/([^/?#]+)/)?.[1] ?? null }];
+    return [{ id: String(t.id), start, end, slug: link.match(/\/event\/([^/?#]+)/)?.[1] ?? null }];
   });
 }
 
@@ -37,14 +36,8 @@ export function parseTotal(json: unknown): number {
   return total;
 }
 
-/** The count so far, and XTracker's pace: the total the window would end on at its rate so far. */
-export function parseStats(json: unknown): { total: number; pace: number | null } {
-  const pace = (json as { data?: { stats?: { pace?: unknown } } }).data?.stats?.pace;
-  return { total: parseTotal(json), pace: typeof pace === 'number' && Number.isFinite(pace) ? pace : null };
-}
-
-export async function trackingStats(id: string): Promise<{ total: number; pace: number | null }> {
-  return parseStats(await getJson(`${XTRACKER}/trackings/${id}?includeStats=true`, 30_000));
+export async function trackingTotal(id: string): Promise<number> {
+  return parseTotal(await getJson(`${XTRACKER}/trackings/${id}?includeStats=true`, 30_000));
 }
 
 /** A post as XTracker recorded it: its id, and when the count rose for it (importedAt), in ms. */

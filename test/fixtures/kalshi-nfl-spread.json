@@ -1,0 +1,306 @@
+{
+"event": {
+"event_ticker": "KXNFLSPREAD-26NOV08DETMIA",
+"mutually_exclusive": false,
+"title": "Detroit vs Miami: Spread",
+"markets": [
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-DET28",
+"yes_sub_title": "Detroit wins by over 27.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 27.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.0400",
+"yes_ask_dollars": "0.0500",
+"last_price_dollars": "0.0500"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-DET24",
+"yes_sub_title": "Detroit wins by over 23.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 23.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.0800",
+"yes_ask_dollars": "0.1000",
+"last_price_dollars": "0.1100"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-DET21",
+"yes_sub_title": "Detroit wins by over 20.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 20.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.1500",
+"yes_ask_dollars": "0.1600",
+"last_price_dollars": "0.1500"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-DET18",
+"yes_sub_title": "Detroit wins by over 17.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 17.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.2000",
+"yes_ask_dollars": "0.2200",
+"last_price_dollars": "0.2200"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-DET17",
+"yes_sub_title": "Detroit wins by over 16.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 16.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.2300",
+"yes_ask_dollars": "0.2500",
+"last_price_dollars": "0.2400"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-DET15",
+"yes_sub_title": "Detroit wins by over 14.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 14.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.2600",
+"yes_ask_dollars": "0.2700",
+"last_price_dollars": "0.2700"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-DET14",
+"yes_sub_title": "Detroit wins by over 13.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 13.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.3000",
+"yes_ask_dollars": "0.3200",
+"last_price_dollars": "0.3100"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-DET11",
+"yes_sub_title": "Detroit wins by over 10.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 10.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.3700",
+"yes_ask_dollars": "0.3800",
+"last_price_dollars": "0.3700"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-DET10",
+"yes_sub_title": "Detroit wins by over 9.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 9.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.4100",
+"yes_ask_dollars": "0.4200",
+"last_price_dollars": "0.4100"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-DET8",
+"yes_sub_title": "Detroit wins by over 7.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 7.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.4500",
+"yes_ask_dollars": "0.4600",
+"last_price_dollars": "0.4600"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-DET7",
+"yes_sub_title": "Detroit wins by over 6.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 6.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.5400",
+"yes_ask_dollars": "0.5500",
+"last_price_dollars": "0.5500"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-DET6",
+"yes_sub_title": "Detroit wins by over 5.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 5.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.5600",
+"yes_ask_dollars": "0.5700",
+"last_price_dollars": "0.5600"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-DET5",
+"yes_sub_title": "Detroit wins by over 4.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 4.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.5900",
+"yes_ask_dollars": "0.6000",
+"last_price_dollars": "0.6000"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-DET4",
+"yes_sub_title": "Detroit wins by over 3.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 3.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.6200",
+"yes_ask_dollars": "0.6300",
+"last_price_dollars": "0.6300"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-DET3",
+"yes_sub_title": "Detroit wins by over 2.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 2.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.7100",
+"yes_ask_dollars": "0.7200",
+"last_price_dollars": "0.6500"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-DET2",
+"yes_sub_title": "Detroit wins by over 1.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 1.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.7300",
+"yes_ask_dollars": "0.7400",
+"last_price_dollars": "0.6500"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-MIA2",
+"yes_sub_title": "Miami wins by over 1.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 1.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.2100",
+"yes_ask_dollars": "0.2200",
+"last_price_dollars": "0.0000"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-MIA3",
+"yes_sub_title": "Miami wins by over 2.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 2.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.1900",
+"yes_ask_dollars": "0.2000",
+"last_price_dollars": "0.0000"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-MIA4",
+"yes_sub_title": "Miami wins by over 3.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 3.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.1400",
+"yes_ask_dollars": "0.1500",
+"last_price_dollars": "0.1500"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-MIA5",
+"yes_sub_title": "Miami wins by over 4.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 4.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.1100",
+"yes_ask_dollars": "0.1300",
+"last_price_dollars": "0.1300"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-MIA6",
+"yes_sub_title": "Miami wins by over 5.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 5.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.0900",
+"yes_ask_dollars": "0.1100",
+"last_price_dollars": "0.0000"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-MIA7",
+"yes_sub_title": "Miami wins by over 6.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 6.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.0800",
+"yes_ask_dollars": "0.0900",
+"last_price_dollars": "0.0900"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-MIA8",
+"yes_sub_title": "Miami wins by over 7.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 7.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.0600",
+"yes_ask_dollars": "0.0700",
+"last_price_dollars": "0.0000"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-MIA10",
+"yes_sub_title": "Miami wins by over 9.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 9.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.0300",
+"yes_ask_dollars": "0.0500",
+"last_price_dollars": "0.0000"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-MIA11",
+"yes_sub_title": "Miami wins by over 10.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 10.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.0300",
+"yes_ask_dollars": "0.0400",
+"last_price_dollars": "0.0400"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-MIA14",
+"yes_sub_title": "Miami wins by over 13.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 13.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.0300",
+"yes_ask_dollars": "0.0500",
+"last_price_dollars": "0.0300"
+},
+{
+"ticker": "KXNFLSPREAD-26NOV08DETMIA-MIA15",
+"yes_sub_title": "Miami wins by over 14.5 points",
+"status": "active",
+"strike_type": "greater",
+"floor_strike": 14.5,
+"cap_strike": null,
+"yes_bid_dollars": "0.0200",
+"yes_ask_dollars": "0.0600",
+"last_price_dollars": "0.0000"
+}
+]
+}
+}

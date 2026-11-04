@@ -7,10 +7,10 @@
 // placed on our market's own axis: the Julian Date on the market's clock (UTC, or ET for an ET calendar date).
 // The event hasn't happened yet, so the CDF starts at 0 now; it runs linearly between cutoffs, and whatever is
 // left at the deadline day's start is a point mass on the deadline.
-import { bucketSpread, fitBuckets, fitPoints, type LadderPoint, pointSpread } from '../buckets.ts';
+import { fitBuckets, fitPoints, type LadderPoint } from '../buckets.ts';
 import { Dist, type Segment } from '../dist.ts';
 import { axisOf, endOfDayIn, jdnOf, jdnOfDay } from '../grid.ts';
-import type { View } from '../analogs.ts';
+import { type View, bucketView, pointView } from '../analogs.ts';
 import { type PmEvent, atLastTrades, parseDateLabel, pmEvent, tradingMarkets } from '../sources/polymarket.ts';
 import { type Built, type Check, DistModel, type Sizing, type SourceReport, THIN_SPREAD, Unreadable, disagreement } from './model.ts';
 
@@ -48,12 +48,7 @@ export function viewPmDates(ev: PmEvent, src: DateSource, o: DateOptions): View 
   const [lastX, lastF] = knots[knots.length - 1];
   // past the ladder's last date, what's left waits at the deadline
   if (lastX < o.deadline) knots.push([o.deadline, lastF]);
-  return {
-    name: `Polymarket ${ev.slug}`,
-    dist: Dist.fromCdf(knots).capAt(o.deadline),
-    spread: pointSpread(fitted),
-    rows: fitted.map((p) => ({ label: p.label, bid: p.bid, ask: p.ask, p: p.F })),
-  };
+  return pointView(`Polymarket ${ev.slug}`, Dist.fromCdf(knots).capAt(o.deadline), fitted);
 }
 
 /** A check on a date market: an event of day buckets on the same question ("IPO on Nov 18?" … "No IPO by Nov 30"). */
@@ -82,12 +77,7 @@ export function viewPmDays(ev: PmEvent, src: DayBuckets, o: DateOptions): View {
   const fitted = fitBuckets(buckets);
   if (!fitted.length) throw new Unreadable(`no trading days in ${ev.slug}`);
   const segments: Segment[] = fitted.map((b) => ({ lo: Math.max(b.lo, axisNow), hi: Math.max(b.hi, axisNow + 1e-6), p: b.p }));
-  return {
-    name: `Polymarket ${ev.slug}`,
-    dist: new Dist([], segments).capAt(o.deadline),
-    spread: bucketSpread(fitted),
-    rows: fitted.map((b) => ({ label: b.label, bid: b.bid, ask: b.ask, p: b.p })),
-  };
+  return bucketView(`Polymarket ${ev.slug}`, new Dist([], segments).capAt(o.deadline), fitted);
 }
 
 export class DateModel extends DistModel {
@@ -107,17 +97,15 @@ export class DateModel extends DistModel {
 
   protected async build(now: number): Promise<Built> {
     const o = { zone: this.zone, now, deadline: jdnOf(this.deadline()) };
-    const events = await Promise.allSettled(this.sources.map((s) => pmEvent(s.slug)));
-    const read = events.map((e, i) => {
-      if (e.status === 'rejected') return { error: e.reason as Error };
-      try {
-        return { view: viewPmDates(e.value, this.sources[i], o), event: e.value };
-      } catch (err) {
-        return { error: err as Error };
-      }
-    });
-    const ok = read.flatMap((r, i) => ('view' in r && r.view ? [{ view: r.view, event: r.event!, src: this.sources[i], w: this.sources[i].weight ?? 1 }] : []));
-    if (!ok.length) throw read.find((r) => 'error' in r)!.error;
+    const read = await Promise.allSettled(
+      this.sources.map(async (src) => {
+        const event = await pmEvent(src.slug);
+        return { view: viewPmDates(event, src, o), event, src, w: src.weight ?? 1 };
+      }),
+    );
+    const ok = read.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+    // every source failed: the first one's reason
+    if (!ok.length) throw (read[0] as PromiseRejectedResult).reason;
     const total = ok.reduce((t, x) => t + x.w, 0);
     const dist = Dist.mix(ok.map((x) => [x.view.dist, x.w] as const));
     const spread = ok.reduce((t, x) => t + (x.w / total) * x.view.spread, 0);

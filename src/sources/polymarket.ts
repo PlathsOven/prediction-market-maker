@@ -9,7 +9,6 @@ export const GAMMA = 'https://gamma-api.polymarket.com';
 export interface PmMarket {
   /** groupItemTitle: the bucket's label ("195-199", "Below 190", "November 15", "$1.5B"). */
   label: string;
-  question: string;
   /** The Yes token's best bid and ask, and its last trade (0-1); null when absent. */
   bid: number | null;
   ask: number | null;
@@ -19,18 +18,15 @@ export interface PmMarket {
   closed: boolean;
   /** When the market ends (on dated ladders, about the date's cutoff). */
   endDate: string | null;
-  liquidity: number;
 }
 
 export interface PmEvent {
   slug: string;
-  title: string;
-  /** Mutually exclusive outcomes (buckets) rather than a ladder of separate yes/no markets. */
-  negRisk: boolean;
   markets: PmMarket[];
 }
 
-const num = (x: unknown): number | null => {
+/** A venue's number, sent as a number or a numeric string; null when it's neither. */
+export const num = (x: unknown): number | null => {
   const n = typeof x === 'string' ? Number(x) : x;
   return typeof n === 'number' && Number.isFinite(n) ? n : null;
 };
@@ -41,18 +37,14 @@ export function parsePmEvent(json: unknown): PmEvent {
   if (!ev || !Array.isArray(ev.markets)) throw new Error('no such Polymarket event');
   return {
     slug: String(ev.slug ?? ''),
-    title: String(ev.title ?? ''),
-    negRisk: ev.negRisk === true,
     markets: (ev.markets as Record<string, unknown>[]).map((m) => ({
       label: String(m.groupItemTitle ?? m.question ?? '').trim(),
-      question: String(m.question ?? ''),
       bid: num(m.bestBid),
       ask: num(m.bestAsk),
       last: num(m.lastTradePrice),
       active: m.active !== false,
       closed: m.closed === true,
       endDate: typeof m.endDate === 'string' ? m.endDate : null,
-      liquidity: num(m.liquidityNum) ?? 0,
     })),
   };
 }
