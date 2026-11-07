@@ -2,10 +2,11 @@
 //
 // Feed models (BTC, Gold) re-quote on every price; distribution models (everything that reads another venue, a
 // status page or a post history) poll their sources every 45-60 s, keep the distribution they built, and quote it
-// with the quantile ladder (ELON's also re-quote on every post, around the count). Their fair value (the
+// with the quantile ladder (ELON's also re-quote on every post, around the count; an NFL game's on every change of
+// its Polymarket lines, which stream). Their fair value (the
 // distribution's median) is guarded, and the book stays two-sided wherever that's safe:
 //   - outside the market's sane range it isn't quoted at all;
-//   - a move bigger than the market's typical scale between two reads waits for a second read to confirm it (or
+//   - a move bigger than the market's typical scale between two reads waits for a read CONFIRM_MS later to confirm it (or
 //     for two sources moving together); meanwhile the book quotes only what's safe under both reads, so it widens
 //     to span the old and the new fair value;
 //   - sources that disagree, or an incident today on an uptime, widen the quotes;
@@ -48,6 +49,10 @@ export interface Model {
   readonly follows?: boolean;
   /** Reads the model's sources. */
   refresh?(now: number): Promise<void>;
+  /** Streams its sources between reads: wake is called whenever that changes its quotes (a socket's price moved). */
+  listen?(wake: () => void): void;
+  /** Stops streaming (the market closed, or the runner stopped). */
+  close?(): void;
   /** The quotes for market m now; last is the underlying's latest price, when there is one. */
   target(m: Market, now: number, last?: Tick): Target;
 }
@@ -68,6 +73,11 @@ export const STALE_LIMIT_MS = 2 * 3_600_000;
 export const STALE_WIDEN = 0.08;
 /** Extra margin while sources disagree (or a check disagrees with them) by more than half the market's scale. */
 export const DISAGREE_WIDEN = 0.03;
+/**
+ * A big move is believed once a read this much later says it again. Polled models read 45-60 s apart, so it's the
+ * next read; a streaming one re-reads on every price, and a misprint can sit in a book for a few seconds.
+ */
+export const CONFIRM_MS = 10_000;
 /** Above this probability-weighted spread (in price, 0-1), a source is thin, and its market is quoted wider. */
 export const THIN_SPREAD = 0.05;
 
@@ -132,8 +142,9 @@ export abstract class DistModel implements Model {
   problem: string | null = null;
   /** A big move waiting for a second read: why the book is quoted wider meanwhile. */
   held: string | null = null;
-  /** The read that moved it, until the next one confirms it. */
+  /** The read that moved it, until a later one confirms it, and when the move was first seen. */
   private pending: Built | null = null;
+  private pendingAt = -Infinity;
   /** Margin over the default for this market (a small sample). */
   protected marginFloor = 0;
   /** Set by the market table (src/markets.ts); none: no checks. */
@@ -148,10 +159,20 @@ export abstract class DistModel implements Model {
     try {
       b = await this.build(now);
     } catch (err) {
-      this.problem = (err as Error).message;
-      if (err instanceof Unreadable) this.built = null;
+      this.failed(err as Error);
       return;
     }
+    this.accept(b, now);
+  }
+
+  /** A read that failed: an unreadable source takes the quotes down at once; any other failure keeps the last read. */
+  protected failed(err: Error): void {
+    this.problem = err.message;
+    if (err instanceof Unreadable) this.built = null;
+  }
+
+  /** A read, through the guards: outside the sane range it's refused; a big move waits for a later read to confirm it. */
+  protected accept(b: Built, now: number): void {
     const median = b.dist.median();
     const g = this.guards;
     if (g?.sane && (median < g.sane[0] || median > g.sane[1])) {
@@ -161,9 +182,10 @@ export abstract class DistModel implements Model {
     }
     const prev = this.built && now - this.readAt <= STALE_LIMIT_MS ? this.built.dist.median() : null;
     if (g && prev !== null && Math.abs(median - prev) > g.scale && !b.corroborated) {
-      // a big move from one source: believe it when the next read says it again
-      const confirmed = this.pending !== null && Math.abs(this.pending.dist.median() - median) <= g.scale / 2;
-      if (!confirmed) {
+      // a big move from one source: believe it when a read CONFIRM_MS later says it again
+      const agrees = this.pending !== null && Math.abs(this.pending.dist.median() - median) <= g.scale / 2;
+      if (!agrees) this.pendingAt = now;
+      if (!agrees || now - this.pendingAt < CONFIRM_MS) {
         this.pending = b;
         this.held = `fair value moved from ${round(prev)} to ${round(median)}: waiting for a second read`;
         return;

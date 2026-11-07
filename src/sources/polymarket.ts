@@ -18,6 +18,16 @@ export interface PmMarket {
   closed: boolean;
   /** When the market ends (on dated ladders, about the date's cutoff). */
   endDate: string | null;
+  /** "Spread: Lions (-6.5)": a game's markets share a groupItemTitle per line, so this is what tells them apart. */
+  question: string;
+  /** A game's market: moneyline, spreads, totals, … (sportsMarketType); null elsewhere. */
+  type: string | null;
+  /** A game's line, for the first outcome: −6.5 is that team by 7 or more; 50.5 is the total over 50.5. */
+  line: number | null;
+  /** The outcomes, the first being the one bid and ask are for: ["Yes", "No"], ["Lions", "Dolphins"], ["Over", "Under"]. */
+  outcomes: string[];
+  /** The first outcome's CLOB token, which its quotes stream on (src/sources/polymarket-live.ts). */
+  token: string | null;
 }
 
 export interface PmEvent {
@@ -30,6 +40,19 @@ export const num = (x: unknown): number | null => {
   const n = typeof x === 'string' ? Number(x) : x;
   return typeof n === 'number' && Number.isFinite(n) ? n : null;
 };
+
+/** A list sent as a JSON string ('["Over", "Under"]') or an array: the outcomes, their tokens. */
+function listOf(x: unknown): string[] {
+  let v = x;
+  if (typeof v === 'string') {
+    try {
+      v = JSON.parse(v);
+    } catch {
+      return [];
+    }
+  }
+  return Array.isArray(v) ? v.map(String) : [];
+}
 
 /** One event from GET /events?slug= (an array) or GET /events/slug/<slug> (the object). */
 export function parsePmEvent(json: unknown): PmEvent {
@@ -45,6 +68,11 @@ export function parsePmEvent(json: unknown): PmEvent {
       active: m.active !== false,
       closed: m.closed === true,
       endDate: typeof m.endDate === 'string' ? m.endDate : null,
+      question: String(m.question ?? ''),
+      type: typeof m.sportsMarketType === 'string' ? m.sportsMarketType : null,
+      line: num(m.line),
+      outcomes: listOf(m.outcomes),
+      token: listOf(m.clobTokenIds)[0] ?? null,
     })),
   };
 }

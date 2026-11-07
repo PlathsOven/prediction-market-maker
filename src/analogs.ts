@@ -2,9 +2,9 @@
 // The view functions are pure, over events already fetched, so they're tested on recorded responses;
 // readAnalogAndTape() fetches and views in one step.
 import { type Bucket, type FittedPoint, type LadderPoint, type Quoted, type ValueType, bucketDist, bucketSpread, fitBuckets, fitPoints, interval, pointDist, pointSpread, thresholdX } from './buckets.ts';
-import type { Dist } from './dist.ts';
+import { Dist, normalKnots, normInv } from './dist.ts';
 import { type KsEvent, type KsMarket, activeMarkets, ksEvent } from './sources/kalshi.ts';
-import { type LabelOptions, type PmEvent, type Range, atLastTrades, parseLabel, pmEvent, tradingMarkets } from './sources/polymarket.ts';
+import { type LabelOptions, type PmEvent, type PmMarket, type Range, atLastTrades, parseLabel, pmEvent, tradingMarkets } from './sources/polymarket.ts';
 import { Unreadable } from './models/model.ts';
 
 /** A bucket's values, as written in config: [lo, hi] (whole numbers and levels inclusive; continuous [lo, hi)), null for an open end. */
@@ -31,6 +31,25 @@ export interface PolymarketLadder {
   labels?: LabelOptions;
 }
 
+/**
+ * A game's event (nfl-chi-det-2026-11-26): its over/under ladder for the total, or for the home team's margin, both
+ * teams' spread ladders and the moneyline, one curve through all three.
+ */
+export interface PolymarketGame {
+  venue: 'polymarket';
+  slug: string;
+  shape: 'total' | 'margin';
+  /** The home team as the event's outcomes name it ("Lions"): the margin is theirs. */
+  home?: string;
+  /**
+   * The number's usual standard deviation. Days before a game, the event may quote only a line or two (the moneyline
+   * first): too few to reach the middle from both sides, so the view is a normal this wide through them, quoted as
+   * thin. Without it, such a ladder doesn't read.
+   */
+  sigma?: number;
+  weight?: number;
+}
+
 export interface KalshiSpec {
   venue: 'kalshi';
   event: string;
@@ -44,9 +63,11 @@ export interface KalshiSpec {
   home?: string;
 }
 
-export type AnalogSpec = PolymarketBuckets | PolymarketLadder | KalshiSpec;
+export type AnalogSpec = PolymarketBuckets | PolymarketLadder | PolymarketGame | KalshiSpec;
 
-const isLadder = (s: PolymarketBuckets | PolymarketLadder): s is PolymarketLadder => s.shape === 'survival' || s.shape === 'cumulative';
+type PolymarketSpec = Exclude<AnalogSpec, KalshiSpec>;
+const isLadder = (s: PolymarketSpec): s is PolymarketLadder => s.shape === 'survival' || s.shape === 'cumulative';
+const isGame = (s: PolymarketSpec): s is PolymarketGame => s.shape === 'total' || s.shape === 'margin';
 
 export interface AnalogOptions {
   value: ValueType;
@@ -64,6 +85,8 @@ export interface View {
   /** Probability-weighted spread where the mass is. */
   spread: number;
   rows: { label: string; bid: number | null; ask: number | null; p: number }[];
+  /** Its shape is partly assumed (a normal through a price or two): quoted as a thin source, whatever its spread. */
+  thin?: boolean;
 }
 
 /** A view of buckets fitted inside their spreads: the spread where the mass is, and a row a bucket. */
@@ -149,6 +172,48 @@ export function viewPmLadder(ev: PmEvent, spec: PolymarketLadder, o: AnalogOptio
   return pointView(`Polymarket ${ev.slug}`, pointDist(fitted, o.value, o.support), fitted);
 }
 
+/**
+ * A game's market as a threshold on our number, or null when it's about something else (a quarter, a team's own
+ * total). The first outcome is the one priced: "Over" 50.5 is the total above 50.5; a team at −6.5 wins by over 6.5,
+ * the home team's margin above 6.5 or the away team's below −6.5. The moneyline is a team winning at all, over 0 (a
+ * tie, resolved 50-50 and about 0.3% of games, is left out).
+ */
+function gameRange(m: PmMarket, spec: PolymarketGame): Range | null {
+  const [first] = m.outcomes;
+  if (spec.shape === 'total') {
+    if (m.type !== 'totals' || m.line === null) return null;
+    return first === 'Over' ? { kind: 'above', a: m.line } : first === 'Under' ? { kind: 'below', a: m.line } : null;
+  }
+  const by = m.type === 'moneyline' ? 0 : m.type === 'spreads' && m.line !== null ? -m.line : null;
+  if (by === null || !spec.home || m.outcomes.length !== 2 || !m.outcomes.includes(spec.home)) return null;
+  return first === spec.home ? { kind: 'above', a: by } : { kind: 'below', a: -by };
+}
+
+/** A Polymarket game's ladder for the total or the home team's margin, as a distribution. */
+export function viewPmGame(ev: PmEvent, spec: PolymarketGame, o: AnalogOptions): View {
+  // a misspelled team would otherwise read as "no spreads yet" for good
+  if (spec.shape === 'margin' && !ev.markets.some((m) => spec.home && m.outcomes.includes(spec.home))) throw new Unreadable(`no market in ${ev.slug} names the ${spec.home}`);
+  const points: LadderPoint[] = tradingMarkets(ev).flatMap((m) => {
+    const r = gameRange(m, spec);
+    const t = r && thresholdX(r, o.value);
+    return t ? [{ label: m.question || m.label, bid: m.bid, ask: m.ask, last: m.last, ...t }] : [];
+  });
+  const fitted = fitPoints(points);
+  const name = `Polymarket ${ev.slug} (${spec.shape})`;
+  // a ladder that reaches the middle from both sides: the curve through it
+  if (fitted.some((p) => p.F <= 0.5) && fitted.some((p) => p.F >= 0.5)) return pointView(name, pointDist(fitted, o.value, o.support), fitted);
+  // fewer (the moneyline at 0 and a line beside it): a line through them to the far end of the support would put the
+  // median anywhere, so a normal through them instead, its mean where each point says it is, tighter quotes weighing more
+  const usable = fitted.filter((p) => p.F > 0.02 && p.F < 0.98);
+  if (usable.length && spec.sigma) {
+    const sd = spec.sigma;
+    const w = usable.map((p) => 1 / (p.spread + 0.01));
+    const mean = usable.reduce((t, p, i) => t + w[i] * (p.x - sd * normInv(p.F)), 0) / w.reduce((t, x) => t + x, 0);
+    return { ...pointView(`${name}, a normal through ${usable.length} price${usable.length > 1 ? 's' : ''}`, Dist.fromCdf(normalKnots(mean, sd)), fitted), thin: true };
+  }
+  throw new Unreadable(`no ${spec.shape === 'total' ? 'over/under' : 'spread or moneyline'} quoted within 10¢ in ${ev.slug}`);
+}
+
 /** Kalshi's ranges for our number: mirrored (mirror − x) when the event counts the other side. */
 function mirrorRange(r: Range, m: number): Range {
   switch (r.kind) {
@@ -202,26 +267,49 @@ export const ksAtLastTrades = (ev: KsEvent): KsEvent => ({
   markets: ev.markets.flatMap((m) => (m.last === null || m.last <= 0 ? [] : [{ ...m, bid: m.last, ask: m.last }])),
 });
 
-/** Fetches one analog and views it at its quotes, and (when it reads) at its last trades: the same request, two views. */
-export async function readAnalogAndTape(spec: AnalogSpec, o: AnalogOptions): Promise<{ view: View; tape: View | null }> {
-  const attempt = (f: () => View): View | null => {
+/** One analog as fetched: viewed now, and again (src/models/event.ts) as its quotes stream in. */
+export type Fetched = { venue: 'kalshi'; ev: KsEvent } | { venue: 'polymarket'; ev: PmEvent; refine?: PmEvent };
+
+export async function fetchAnalog(spec: AnalogSpec): Promise<Fetched> {
+  if (spec.venue === 'kalshi') return { venue: 'kalshi', ev: await ksEvent(spec.event) };
+  const ev = await pmEvent(spec.slug);
+  const refine = !isGame(spec) && !isLadder(spec) && spec.refine ? await pmEvent(spec.refine.slug).catch(() => undefined) : undefined;
+  return { venue: 'polymarket', ev, refine };
+}
+
+/** A fetched analog at its quotes, and (when it reads) at its last trades: two views of one fetch. */
+export function viewAnalog(spec: AnalogSpec, f: Fetched, o: AnalogOptions): { view: View; tape: View | null } {
+  const attempt = (g: () => View): View | null => {
     try {
-      return f();
+      return g();
     } catch {
       return null;
     }
   };
-  if (spec.venue === 'kalshi') {
-    const ev = await ksEvent(spec.event);
-    return { view: viewKalshi(ev, spec, o), tape: attempt(() => viewKalshi(ksAtLastTrades(ev), spec, o)) };
+  if (spec.venue === 'kalshi' || f.venue === 'kalshi') {
+    if (spec.venue !== 'kalshi' || f.venue !== 'kalshi') throw new Error(`${analogName(spec)}: fetched from the other venue`);
+    return { view: viewKalshi(f.ev, spec, o), tape: attempt(() => viewKalshi(ksAtLastTrades(f.ev), spec, o)) };
   }
-  const ev = await pmEvent(spec.slug);
+  const ev = f.ev;
+  if (isGame(spec)) return { view: viewPmGame(ev, spec, o), tape: attempt(() => viewPmGame(atLastTrades(ev), spec, o)) };
   if (isLadder(spec)) return { view: viewPmLadder(ev, spec, o), tape: attempt(() => viewPmLadder(atLastTrades(ev), spec, o)) };
-  const refine = spec.refine ? await pmEvent(spec.refine.slug).catch(() => undefined) : undefined;
   return {
-    view: viewPmBuckets(ev, spec, o, refine),
-    tape: attempt(() => viewPmBuckets(atLastTrades(ev), spec, o, refine && atLastTrades(refine))),
+    view: viewPmBuckets(ev, spec, o, f.refine),
+    tape: attempt(() => viewPmBuckets(atLastTrades(ev), spec, o, f.refine && atLastTrades(f.refine))),
   };
 }
 
-export const analogName = (s: AnalogSpec): string => (s.venue === 'kalshi' ? `Kalshi ${s.event}${s.mirror !== undefined ? ` (${s.mirror} − x)` : ''}` : `Polymarket ${s.slug}`);
+/** Fetches one analog and views it. */
+export const readAnalogAndTape = async (spec: AnalogSpec, o: AnalogOptions): Promise<{ view: View; tape: View | null }> => viewAnalog(spec, await fetchAnalog(spec), o);
+
+/** Its quotes stream (a game's lines move by the second in play): read them off Polymarket's socket between fetches. */
+export const streams = (s: AnalogSpec): boolean => s.venue === 'polymarket' && isGame(s);
+
+/** The tokens a streaming source's view reads (a game's ~35 lines for this number, of its ~300 markets). */
+export function streamTokens(s: AnalogSpec, f: Fetched): string[] {
+  if (s.venue !== 'polymarket' || !isGame(s) || f.venue !== 'polymarket') return [];
+  return tradingMarkets(f.ev).flatMap((m) => (m.token && gameRange(m, s) ? [m.token] : []));
+}
+
+export const analogName = (s: AnalogSpec): string =>
+  s.venue === 'kalshi' ? `Kalshi ${s.event}${s.mirror !== undefined ? ` (${s.mirror} − x)` : ''}` : `Polymarket ${s.slug}${isGame(s) ? ` (${s.shape})` : ''}`;

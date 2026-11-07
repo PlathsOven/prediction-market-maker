@@ -9,7 +9,7 @@
 import type { Market } from './api.ts';
 import type { AnalogSpec } from './analogs.ts';
 import type { ValueType } from './buckets.ts';
-import { Dist } from './dist.ts';
+import { Dist, normalKnots } from './dist.ts';
 import { BTC_FEED, type FeedCalibration, GOLD_SIGMA, type SigmaCalibration, feedLadder, sigmaLadder } from './ladder.ts';
 import { type DateSource, type DayBuckets, DateModel } from './models/date.ts';
 import { ElonModel, HISTORY_DAYS } from './models/elon.ts';
@@ -71,18 +71,26 @@ const NFL_SIGMA = 13.5;
  * a sportsbook's -110: this margin keeps the best quotes on the half-points either side of the median.
  */
 const NFL_MARGIN = 0.015;
-/** A normal distribution as CDF knots. */
-const normalKnots = (mean: number, sd: number): [number, number][] =>
-  (
-    [[-3, 0.00135], [-2, 0.02275], [-1.5, 0.06681], [-1, 0.15866], [-0.5, 0.30854], [0, 0.5], [0.5, 0.69146], [1, 0.84134], [1.5, 0.93319], [2, 0.97725], [3, 0.99865]] as const
-  ).map(([z, p]) => [mean + z * sd, p]);
 
 /**
- * An NFL game's two books, off Kalshi's ladders (each a threshold every point or so, trading through the game). Kalshi
- * lists a game's totals and spreads about a week out; until then, and only until kickoff, a prior quoted wider.
+ * An NFL game's two books, off Polymarket's and Kalshi's ladders (each a threshold every point or two, trading through
+ * the game), half each. Polymarket lists a game's moneyline weeks ahead and its totals and spreads about two weeks
+ * out, but quotes them within 10¢ only in the last week, the moneyline first; Kalshi lists about a week out. While
+ * Polymarket quotes only a line or two, they're read as a normal through them (NFL_SIGMA wide); with nothing quoted
+ * anywhere, and only until kickoff, the prior. Both are quoted wider.
+ *
+ * api: NFL-CHI-DET (Polymarket's slug is this, lowercase, and the kickoff's UTC date); game: Kalshi's 26NOV26CHIDET;
+ * home: the home team as Kalshi (DET) and Polymarket (Lions) name it.
  */
-function nflEntries(api: string, game: string, home: string, kickoff: string, prior: { total: number; margin: number; why: string }): Record<string, Entry> {
+function nflEntries(
+  api: string,
+  game: string,
+  home: { code: string; name: string },
+  kickoff: string,
+  prior: { total: number; margin: number; why: string },
+): Record<string, Entry> {
   const until = ms(kickoff);
+  const slug = `${api.toLowerCase()}-${kickoff.slice(0, 10)}`;
   const book = (line: 'TOTAL' | 'SPREAD', mean: number, unit: string, support: [number, number], strikes: [number, number]): [string, Entry] => [
     `${api}-${line}`,
     {
@@ -92,7 +100,10 @@ function nflEntries(api: string, game: string, home: string, kickoff: string, pr
         model: 'event',
         value: { type: 'continuous' },
         support,
-        sources: [{ venue: 'kalshi', event: `KXNFL${line}-${game}`, ...(line === 'SPREAD' && { home }) }],
+        sources: [
+          line === 'TOTAL' ? { venue: 'polymarket', slug, shape: 'total', sigma: NFL_SIGMA } : { venue: 'polymarket', slug, shape: 'margin', home: home.name, sigma: NFL_SIGMA },
+          { venue: 'kalshi', event: `KXNFL${line}-${game}`, ...(line === 'SPREAD' && { home: home.code }) },
+        ],
         prior: { knots: normalKnots(mean, NFL_SIGMA), why: prior.why, until },
       },
       offline: { id: `${api}-${line}`, kind: 'fixed', unit, strikeStep: 1, strikeOffset: 0.5, strikeMin: strikes[0], strikeMax: strikes[1], expiresAt: until + 8 * 3_600_000 },
@@ -121,16 +132,17 @@ export const CATALOG: Readonly<Record<string, Entry>> = {
 
   // Thanksgiving's three games. The priors' margins are ESPN's matchup predictor on Nov 4 (the home team's chance of
   // winning, at NFL_SIGMA); the totals are a typical game's
-  ...nflEntries('NFL-CHI-DET', '26NOV26CHIDET', 'DET', '2026-11-26T18:00:00Z', { total: 46, margin: -2, why: 'a typical total; ESPN gives the Lions 44%' }),
-  ...nflEntries('NFL-PHI-DAL', '26NOV26PHIDAL', 'DAL', '2026-11-26T21:30:00Z', { total: 46, margin: 12, why: 'a typical total; ESPN gives the Cowboys 81%' }),
-  ...nflEntries('NFL-KC-BUF', '26NOV26KCBUF', 'BUF', '2026-11-27T01:20:00Z', { total: 46, margin: 3, why: 'a typical total; ESPN gives the Bills 60%' }),
+  ...nflEntries('NFL-CHI-DET', '26NOV26CHIDET', { code: 'DET', name: 'Lions' }, '2026-11-26T18:00:00Z', { total: 46, margin: -2, why: 'a typical total; ESPN gives the Lions 44%' }),
+  ...nflEntries('NFL-PHI-DAL', '26NOV26PHIDAL', { code: 'DAL', name: 'Cowboys' }, '2026-11-26T21:30:00Z', { total: 46, margin: 12, why: 'a typical total; ESPN gives the Cowboys 81%' }),
+  ...nflEntries('NFL-KC-BUF', '26NOV26KCBUF', { code: 'BUF', name: 'Bills' }, '2026-11-27T01:20:00Z', { total: 46, margin: 3, why: 'a typical total; ESPN gives the Bills 60%' }),
 
   'HOUSE-R-2026': {
     guards: { scale: 8, sane: [150, 290] },
     spec: {
       model: 'event',
       value: { type: 'integer' },
-      support: [150, 260],
+      // the floor rose with the calls: open-ended low buckets spread evenly down to it (Nov 5, 2026: about 153 seats called, 33 open)
+      support: [165, 260],
       sources: [
         {
           venue: 'polymarket',
@@ -174,7 +186,8 @@ export const CATALOG: Readonly<Record<string, Entry>> = {
     spec: {
       model: 'event',
       value: { type: 'integer' },
-      support: [35, 65],
+      // Republicans have 44 seats called (Nov 5, 2026), so "below 45" means 44, not an even spread down to the old floor of 35; a floor at 44 itself would leave no bid
+      support: [43, 65],
       sources: [
         {
           venue: 'polymarket',

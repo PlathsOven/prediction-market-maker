@@ -8,7 +8,7 @@ import { GOLD_SIGMA, LADDER, sigmaLadder } from '../src/ladder.ts';
 import { CATALOG, createModel, guardsOf } from '../src/markets.ts';
 import { type DayBuckets, viewPmDays } from '../src/models/date.ts';
 import { FeedModel } from '../src/models/feed.ts';
-import { type Built, DISAGREE_WIDEN, DistModel, STALE_LIMIT_MS, STALE_MS, STALE_WIDEN, type Sizing, disagreement, envelope } from '../src/models/model.ts';
+import { type Built, CONFIRM_MS, DISAGREE_WIDEN, DistModel, STALE_LIMIT_MS, STALE_MS, STALE_WIDEN, type Sizing, disagreement, envelope } from '../src/models/model.ts';
 import { OUTAGE_WIDEN, UptimeModel, recency, uptimeDist, windowUptimes } from '../src/models/uptime.ts';
 import { parsePmEvent } from '../src/sources/polymarket.ts';
 import { parseShowcase, parseUptimePage } from '../src/sources/statuspage.ts';
@@ -74,6 +74,18 @@ describe('fair-value guards', () => {
     await m.refresh(90_000);
     expect(m.held).toBeNull();
     expect(best(m, 90_000).bid).toBeGreaterThan(205);
+  });
+
+  test('a streaming model re-reads on every price: a move is believed only once it has held for CONFIRM_MS', async () => {
+    const m = scripted({ centre: 196 }, { centre: 210 }, { centre: 210.5 }, { centre: 210.2 });
+    await m.refresh(0);
+    await m.refresh(1_000);
+    await m.refresh(5_000);
+    // said again 4 s later: a misprint can sit in a book that long
+    expect(m.held).not.toBeNull();
+    await m.refresh(1_000 + CONFIRM_MS);
+    expect(m.held).toBeNull();
+    expect(m.built!.dist.median()).toBeCloseTo(210.2, 9);
   });
 
   test('two ladders\' envelope: the lower best bid\'s bids, the higher best ask\'s asks; a side either lacks stays out', () => {

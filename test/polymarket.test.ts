@@ -1,7 +1,7 @@
 // The Polymarket readers on responses recorded from the Gamma API on 2026-10-29 at about 09:00 UTC (trimmed to
 // the fields the bots read). The implied medians are the ones the research read by hand that morning.
 import { describe, expect, test } from 'bun:test';
-import { type PolymarketBuckets, type PolymarketLadder, rangeOfEdges, viewPmBuckets, viewPmLadder } from '../src/analogs.ts';
+import { type PolymarketBuckets, type PolymarketGame, type PolymarketLadder, rangeOfEdges, viewPmBuckets, viewPmGame, viewPmLadder } from '../src/analogs.ts';
 import { fitBuckets, fitPoints, interval } from '../src/buckets.ts';
 import { jdnOf, jdnOfDay } from '../src/grid.ts';
 import { CATALOG, offlineListings } from '../src/markets.ts';
@@ -183,6 +183,81 @@ describe('ladders of thresholds', () => {
     const unconditional = viewPmLadder(ev, src, { ...optionsOf('PREDICT-FDV'), conditional: false });
     expect(unconditional.dist.below(0.05)).toBeGreaterThan(0);
     expect(unconditional.dist.median()).toBeLessThan(v.dist.median());
+  });
+});
+
+// recorded 2026-11-07 at about 01:00 UTC (the moneyline, spreads and totals only): Detroit at Miami, Nov 8, the game
+// Kalshi's NFL fixtures are from
+describe('games', () => {
+  const game = () => fixture('nfl-det-mia-2026-11-08');
+  const total: PolymarketGame = { venue: 'polymarket', slug: 'nfl-det-mia-2026-11-08', shape: 'total', sigma: 13.5 };
+  const margin = (home: string): PolymarketGame => ({ venue: 'polymarket', slug: 'nfl-det-mia-2026-11-08', shape: 'margin', home, sigma: 13.5 });
+
+  test('the over/under ladder: the median sits where the over crosses 50¢', async () => {
+    const v = viewPmGame(await game(), total, optionsOf('NFL-CHI-DET-TOTAL'));
+    // over 48.5 was 55/57¢, over 50.5 48/49¢
+    expect(v.dist.median()).toBeGreaterThan(49.5);
+    expect(v.dist.median()).toBeLessThan(50.5);
+    expect(v.dist.below(46.5)).toBeCloseTo(1 - 0.625, 2);
+    expect(v.spread).toBeLessThan(THIN_SPREAD);
+  });
+
+  test('both teams’ spreads and the moneyline read as one curve of the home team’s margin', async () => {
+    const v = viewPmGame(await game(), margin('Lions'), optionsOf('NFL-CHI-DET-SPREAD'));
+    // Lions −6.5 was 52/53¢, −7.5 44/45¢
+    expect(v.dist.median()).toBeGreaterThan(6.5);
+    expect(v.dist.median()).toBeLessThan(7.5);
+    // Dolphins −3.5 was 13/16¢: the margin below −3.5; the moneyline (Lions 74/75¢) is the point at 0
+    expect(v.dist.below(-3.5)).toBeCloseTo(0.145, 2);
+    expect(v.dist.below(0)).toBeCloseTo(0.255, 2);
+    expect(v.rows.some((r) => r.label === 'Spread: Dolphins (-3.5)')).toBe(true);
+    // a quarter's or a half's lines aren't the game's
+    expect(v.rows.every((r) => !/1H|Q\d|half/i.test(r.label))).toBe(true);
+    // from the other side, the same game turned over
+    const other = viewPmGame(await game(), margin('Dolphins'), optionsOf('NFL-CHI-DET-SPREAD'));
+    expect(other.dist.median()).toBeCloseTo(-v.dist.median(), 1);
+  });
+
+  test('a week out, with the moneyline alone, a normal through it, quoted as thin', async () => {
+    const ev = await game();
+    const ml = { ...ev, markets: ev.markets.filter((m) => m.type === 'moneyline') };
+    const v = viewPmGame(ml, margin('Lions'), optionsOf('NFL-CHI-DET-SPREAD'));
+    // P(Lions win) 74.5¢: 13.5 × Φ⁻¹(0.745) = 8.9
+    expect(v.dist.median()).toBeCloseTo(8.9, 1);
+    expect(v.thin).toBe(true);
+    // without a sigma one price isn't a curve; and the moneyline says nothing about the total
+    expect(() => viewPmGame(ml, { ...margin('Lions'), sigma: undefined }, optionsOf('NFL-CHI-DET-SPREAD'))).toThrow(Unreadable);
+    expect(() => viewPmGame(ml, total, optionsOf('NFL-CHI-DET-TOTAL'))).toThrow(Unreadable);
+  });
+
+  test('a ladder that doesn’t reach the middle from both sides is a normal through its points, not a line to the support', async () => {
+    const ev = await game();
+    // the moneyline (F(0) = 0.255) and Lions −1.5 (72¢: F(1.5) = 0.28), both below the middle
+    const two = { ...ev, markets: ev.markets.filter((m) => m.type === 'moneyline' || m.question === 'Spread: Lions (-1.5)') };
+    const v = viewPmGame(two, margin('Lions'), optionsOf('NFL-CHI-DET-SPREAD'));
+    expect(v.rows.length).toBe(2);
+    // each says about 9 (8.9 and 9.4); a straight line from F(1.5) to F(70) = 1 would say 34
+    expect(v.dist.median()).toBeGreaterThan(8.8);
+    expect(v.dist.median()).toBeLessThan(9.5);
+    expect(v.thin).toBe(true);
+  });
+
+  test('a moneyline quoted wider than 10¢ (Thanksgiving’s, two weeks out) says nothing', async () => {
+    const ev = await game();
+    const wide = { ...ev, markets: ev.markets.filter((m) => m.type === 'moneyline').map((m) => ({ ...m, bid: 0.25, ask: 0.76 })) };
+    expect(() => viewPmGame(wide, margin('Lions'), optionsOf('NFL-CHI-DET-SPREAD'))).toThrow(Unreadable);
+  });
+
+  test('a home team the event doesn’t name stops the market rather than waiting for spreads', async () => {
+    const ev = await game();
+    expect(() => viewPmGame(ev, margin('Lion'), optionsOf('NFL-CHI-DET-SPREAD'))).toThrow(Unreadable);
+  });
+
+  test('each game reads its Polymarket event by the kickoff’s UTC date, and its home team by name', () => {
+    const sources = (u: string) => spec(u).sources;
+    expect(sources('NFL-KC-BUF-TOTAL')[0]).toEqual({ venue: 'polymarket', slug: 'nfl-kc-buf-2026-11-27', shape: 'total', sigma: 13.5 });
+    expect(sources('NFL-CHI-DET-SPREAD')[0]).toMatchObject({ slug: 'nfl-chi-det-2026-11-26', shape: 'margin', home: 'Lions' });
+    expect(sources('NFL-PHI-DAL-SPREAD')[0]).toMatchObject({ slug: 'nfl-phi-dal-2026-11-26', home: 'Cowboys' });
   });
 });
 

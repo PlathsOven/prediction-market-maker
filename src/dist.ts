@@ -205,6 +205,12 @@ export function normInv(p: number): number {
   return (lo + hi) / 2;
 }
 
+/** A normal distribution as CDF knots, ±3 sd (a prior, or a shape through one price). */
+export const normalKnots = (mean: number, sd: number): [number, number][] =>
+  (
+    [[-3, 0.00135], [-2, 0.02275], [-1.5, 0.06681], [-1, 0.15866], [-0.5, 0.30854], [0, 0.5], [0.5, 0.69146], [1, 0.84134], [1.5, 0.93319], [2, 0.97725], [3, 0.99865]] as const
+  ).map(([z, p]) => [mean + z * sd, p]);
+
 // ---- monotone fits ------------------------------------------------------------------------------------------
 
 /**

@@ -111,6 +111,7 @@ export class Runner {
     if (this.timer) clearTimeout(this.timer);
     for (const i of this.intervals) clearInterval(i);
     for (const t of this.polls.values()) if (t) clearTimeout(t);
+    for (const model of this.models.values()) model.close?.();
     this.ws?.close(1000);
     const n = await this.o.rest.cancelAll().catch(() => null);
     this.o.log(n === null ? 'stopped (cancel-all failed)' : `stopped: canceled ${n} quotes`);
@@ -136,10 +137,15 @@ export class Runner {
       this.models.set(m.id, model);
       this.o.log(`${m.id}: quoting from ${model.source}`);
       if (model.refresh) this.poll(model);
+      // a streaming model re-quotes when its source moves, not only after its polls
+      model.listen?.(() => {
+        if (!this.stopped && this.models.get(m.id) === model) this.later(0);
+      });
     }
     for (const [id, model] of [...this.models]) {
       if (this.markets.has(id)) continue;
       this.models.delete(id);
+      model.close?.();
       const t = this.polls.get(model);
       if (t) clearTimeout(t);
       this.polls.delete(model);

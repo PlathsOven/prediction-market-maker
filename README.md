@@ -11,6 +11,7 @@ Open-source market-making bots for prediction markets, in TypeScript on [Bun](ht
 | The next US strike on Iran, Anthropic's IPO date, the next Fable model | `IRAN-STRIKE`, `ANTH-IPO-DATE`, `FABLE-NEXT` | Polymarket's "by date" ladders |
 | Anthropic's IPO market cap, predict.fun's FDV | `ANTH-IPO-CAP`, `PREDICT-FDV` | Polymarket buckets and thresholds |
 | The Fed's rate at the end of 2027 | `FED-2027` | Polymarket and Kalshi rate levels |
+| NFL games: total points and the home team's margin | `NFL-CHI-DET-TOTAL`, `NFL-CHI-DET-SPREAD` (and PHI-DAL, KC-BUF) | Polymarket's and Kalshi's over/under, spread and moneyline markets |
 | The 10-year Treasury yield's high by year-end | `UST10Y-MAX-2026` | Polymarket's "hit" ladder and Treasury's daily closes |
 | Elon Musk's posts on X | `ELON-1d`, `ELON-7d` | XTracker's count, his posting rate and Polymarket's windows |
 | claude.ai and Polymarket uptime | `CLAUDE-UP-1d`, `CLAUDE-UP-7d`, `CLAUDE-UP-30d`, `POLY-UP-1d`, `POLY-UP-7d`, `POLY-UP-30d` | The status pages' own history |
@@ -88,12 +89,12 @@ Price-feed markets (BTC, Gold) use the ladder Rizon's maker has always used, BTC
 
 ### Guards on the fair value
 
-A market's fair value is its distribution's median: the point the ladder centres on. A model re-reads its sources every 45 seconds (60 on uptime and Elon's posts; 10 seconds until its first read works), and four checks run on every read:
+A market's fair value is its distribution's median: the point the ladder centres on. A model re-reads its sources every 45 seconds (60 on uptime and Elon's posts; 10 seconds until its first read works). An NFL game's Polymarket lines also stream between reads (below), so those books re-read on every change, at most once a second. Four checks run on every read:
 
 | Check | When | Then |
 |---|---|---|
 | Sane range | The fair value falls outside the market's plausible range (House 150-290 seats, the Fed 0.5-10%, an uptime 90-100%, …) | Nothing is quoted: a misread source, not news |
-| A jump | It moves by more than the market's typical scale since the last read (House 8 seats, the Fed 0.5 points, a date 5-10 days, …) | Until the next read confirms it, the book quotes only what's safe under both reads: the lower read's bids and the higher one's asks, so it spans the old and the new fair value. Two sources moving together are believed at once |
+| A jump | It moves by more than the market's typical scale since the last read (House 8 seats, the Fed 0.5 points, a date 5-10 days, …) | Until a read at least 10 seconds later confirms it (the next poll, or a streaming book a few prices on), the book quotes only what's safe under both reads: the lower read's bids and the higher one's asks, so it spans the old and the new fair value. Two sources moving together are believed at once |
 | Disagreement | A source, the same source at its last trades (its tape), or a related event read as a check sits more than half that scale away | The quotes widen by 3 points (m = 7%), with the reason in the log |
 | Staleness | No good read for 10 minutes (requests failing) | The last read is quoted 8 points wider; after 2 hours the book comes down. A source that answers with something unreadable (a format it doesn't know, an event that has closed) takes it down at once |
 
@@ -252,9 +253,22 @@ Read on 2026-10-29:
 
 The 1-day books and POLY-UP-7d are one-sided. CLAUDE-UP-7d, CLAUDE-UP-30d and POLY-UP-30d are quoted wider (m = 9%), because their latest window disagrees with the history.
 
-### NFL games: Kalshi's over/under and spread ladders
+### NFL games: Polymarket's and Kalshi's over/under and spread ladders
 
-Each game is two books: the total (`NFL-CHI-DET-TOTAL`) and the home team's margin (`NFL-CHI-DET-SPREAD`). Kalshi's `KXNFLTOTAL` is a ladder of "over x" markets, read like any threshold ladder. Its `KXNFLSPREAD` is two ladders, one for each team winning by over x: the home team's reads as P(margin > x), the away team's as P(margin < −x), so one curve runs through both. Kalshi lists a game about a week out, so until then, and only until kickoff, the book quotes a written normal prior, wider. The best quotes sit on the half-points either side of the median (`margin: 0.015`): a book one point wide costs a taker about 3¢ per $1, against 4.5¢ for a sportsbook's -110.
+Each game is two books: the total (`NFL-CHI-DET-TOTAL`) and the home team's margin (`NFL-CHI-DET-SPREAD`), each read from Polymarket's game event (`nfl-chi-det-2026-11-26`: the teams and the kickoff's UTC date) and Kalshi's `KXNFLTOTAL` and `KXNFLSPREAD`, half each.
+
+| Market in the event | Example | Read as |
+|---|---|---|
+| Over/under | Polymarket "O/U 50.5" at 48/49¢, Kalshi "over 50" | P(total > 50.5) |
+| The home team's spread | "Spread: Lions (−6.5)" at 52/53¢ | P(margin > 6.5) |
+| The away team's spread | "Spread: Dolphins (−3.5)" at 13/16¢ | P(margin < −3.5) |
+| The moneyline (Polymarket) | "Lions vs. Dolphins", Lions at 74/75¢ | P(margin > 0) |
+
+So one curve runs through both teams' ladders and the moneyline. A quarter's or a half's lines, team totals and props are left out.
+
+**Streaming.** The Gamma API is read every 45 seconds for which lines the event has. Their quotes also come in on Polymarket's public market WebSocket (`wss://ws-subscriptions-clob.polymarket.com/ws/market`, no key): one socket for the whole bot, subscribed to the lines each book reads (about 35 of a game's 300 markets), with a `price_change` carrying each line's new best bid and ask. Every change re-fits the curve from what's in memory, at most once a second, and re-quotes, so in play the book follows a score within about a second instead of up to 45. While the socket has the books, Polymarket alone makes the fair value: Kalshi, read every 45 seconds (its socket needs a key), would hold back every move until its next read, so it's a check meanwhile, widening the quotes when it's more than 3.5 points away. With the socket down, the quotes fall back to Gamma's and both venues mix again. On Detroit at Miami (Nov 8), read on Nov 7, the two venues' medians were within 0.2 points of each other on both books.
+
+Polymarket lists a game's moneyline weeks ahead and its alternate lines about two weeks out, but quotes them within 10¢ only in the last week, the moneyline first. Kalshi lists about a week out. While Polymarket quotes only a line or two, so they don't reach 50% from both sides, they're read as a normal through them, 13.5 points wide (an NFL total's or margin's usual miss against the line), quoted as a thin source. With nothing quoted anywhere, and only until kickoff, the book quotes a written normal prior, also wider. The best quotes sit on the half-points either side of the median (`margin: 0.015`): a book one point wide costs a taker about 3¢ per $1, against 4.5¢ for a sportsbook's -110.
 
 ### Markets with no analog: priors
 
